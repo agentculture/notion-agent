@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/). This project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.1] - 2026-08-30
+
+### Added
+
+- **Catalog-coverage tests** (`test_every_registered_path_has_catalog_entry`, `test_no_orphan_catalog_entries`) that enumerate the argparse subparser tree independently of `ENTRIES` and diff the two, so a registered verb with no `explain` entry — or a stale entry for a removed verb — now fails the suite. The pre-existing `test_every_catalog_path_resolves` iterates `known_paths()`, which is derived from the catalog itself, so it proves entries *render* but can never notice a missing one (qodo review, PR #2).
+
+### Fixed
+
+- **`CLAUDE.md` no longer overstates the explain-catalog guarantee.** It claimed `test_every_catalog_path_resolves` made a missing catalog entry fail the suite; that test is tautological with respect to omissions. The claim is now true because the enforcing tests above exist, and the section names which test does what.
+
 ## [0.8.0] - 2026-08-30
 
 ### Added

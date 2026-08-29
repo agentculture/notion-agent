@@ -99,8 +99,14 @@ only deliberately:
   the rubric.
 - **`explain/`** — `catalog.py` maps command-path tuples to verbatim markdown;
   `resolve()` raises `CliError` on an unknown path. **Every registered noun/verb
-  needs a catalog entry** — `tests/test_cli.py` walks `known_paths()` and asserts
-  each resolves, so a new verb without an entry fails the suite.
+  needs a catalog entry**, and that is enforced in both directions:
+  `test_every_registered_path_has_catalog_entry` walks the *parser's* subparser
+  tree and diffs it against the catalog, so a new verb without an entry fails the
+  suite; `test_no_orphan_catalog_entries` catches the reverse (minus the root
+  aliases `()`, `notion`, `notion-agent`, which name the tool, not a verb). Note
+  `test_every_catalog_path_resolves` proves only that entries *render* — it
+  iterates `known_paths()`, which comes from the catalog itself, so it can never
+  notice a missing one.
 
 `whoami.py` carries two helpers the rest of the CLI reuses: `find_culture_yaml()`
 walks up from `__file__` (deliberately **not** the CWD — the identity must be
