@@ -1,16 +1,24 @@
 # notion-agent
 
-Agent-first CLI for controlling Notion: pages, databases, blocks, and search. Also a communication lane — other AgentCulture agents use their own CLIs and skills to talk to each other through shared Notion pages and databases.
+Agent-first CLI for controlling Notion: pages, databases, blocks, and search.
+Also a communication lane — other AgentCulture agents use their own CLIs and
+skills to talk to each other through shared Notion pages and databases.
+
+> **Status: early scaffold.** The Notion surface described above is the goal,
+> not yet the code. What ships today is the agent-first CLI baseline — the
+> introspection verbs, the mesh identity, the skill kit, and the CI/deploy
+> wiring — with **no Notion client, auth, or nouns** yet. See
+> [Roadmap](#roadmap) and [`CLAUDE.md`](CLAUDE.md) for what exists on disk.
 
 ## What you get
 
 - **An agent-first CLI** cited from [teken](https://github.com/agentculture/teken)
   (`afi-cli`) — the runtime package has no third-party dependencies.
 - **A mesh identity** — `culture.yaml` (`suffix` + `backend`) and the matching
-  resident prompt file (`AGENTS.colleague.md`, since this template runs
+  resident prompt file (`AGENTS.colleague.md`, since this agent runs
   `backend: colleague`).
-- **The canonical guildmaster skill kit** (11 skills) under `.claude/skills/`,
-  vendored cite-don't-import. See [`docs/skill-sources.md`](docs/skill-sources.md).
+- **The canonical guildmaster skill kit** under `.claude/skills/`, vendored
+  cite-don't-import. See [`docs/skill-sources.md`](docs/skill-sources.md).
 - **A build + deploy baseline** — pytest, lint, the agent-first rubric gate, and
   PyPI Trusted Publishing wired into GitHub Actions.
 
@@ -19,10 +27,13 @@ Agent-first CLI for controlling Notion: pages, databases, blocks, and search. Al
 ```bash
 uv sync
 uv run pytest -n auto                 # run the test suite
-uv run notion-agent whoami  # identity from culture.yaml
-uv run notion-agent learn   # self-teaching prompt (add --json)
+uv run notion whoami                  # identity from culture.yaml
+uv run notion learn                   # self-teaching prompt (add --json)
 uv run teken cli doctor . --strict    # the agent-first rubric gate CI runs
 ```
+
+The package installs **two console scripts** for the same entry point:
+`notion` (short, primary) and `notion-agent`. `python -m notion_agent` works too.
 
 ## CLI
 
@@ -39,20 +50,31 @@ Every command supports `--json`. Results go to stdout, errors/diagnostics to
 stderr (never mixed). Exit codes: `0` success, `1` user error, `2` environment
 error, `3+` reserved.
 
-## Make it your own
+Because the Notion surface isn't built yet, `learn` and `explain` still describe
+this repo as the mesh-agent template it was scaffolded from.
 
-1. Rename the package `notion_agent/` and the `notion-agent`
-   CLI/dist name throughout `pyproject.toml`, the package, `tests/`,
-   `sonar-project.properties`, and this `README.md`. The name is hard-coded in
-   ~100 places, so list every occurrence first — see the `git grep` discovery
-   command in [`CLAUDE.md`](CLAUDE.md), the authoritative rename procedure.
-2. Edit `culture.yaml` with your `suffix` and `backend`.
-3. Rewrite `CLAUDE.md` for your agent and run `/init`.
-4. Re-vendor only the skills you need from guildmaster (see
-   [`docs/skill-sources.md`](docs/skill-sources.md)).
+## Roadmap
 
-See [`CLAUDE.md`](CLAUDE.md) for the full conventions (version-bump-every-PR,
-the `cicd` PR lane, deploy setup).
+The Notion capability is not implemented. When it lands, expect noun groups
+under `notion_agent/cli/_commands/` — `page`, `database`, `block`, `search` —
+each following the existing `register(sub)` pattern with a matching `explain`
+catalog entry, `--json` on every verb, and structured `CliError` failures, plus
+a Notion client dependency and token-from-environment auth.
+
+## Development
+
+```bash
+uv run pytest -n auto                       # tests
+uv run black --check notion_agent tests     # lint gates CI runs
+uv run isort --check-only notion_agent tests
+uv run flake8 notion_agent tests
+uv run bandit -c pyproject.toml -r notion_agent
+```
+
+Every PR bumps the version (the `version-check` CI job enforces it) and goes
+through the `cicd` skill. Pushing to `main` publishes to PyPI via Trusted
+Publishing. See [`CLAUDE.md`](CLAUDE.md) for the full conventions — architecture,
+the stable-contract modules, worktree layout, and the vendored-skill rules.
 
 ## License
 

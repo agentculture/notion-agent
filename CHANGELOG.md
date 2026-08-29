@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/). This project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.0] - 2026-08-30
+
+### Added
+
+- **`notion-agent` console script alias** in `pyproject.toml`, pointing at the same entry point as `notion`. The scaffold rename set the single script name to `notion` while the argparse `prog`, the `explain` catalog, the `learn` text, the tests, and the README all say `notion-agent` — so `uv run notion-agent whoami` failed with `Failed to spawn`. Both names now work, and commands copied out of `learn` / `explain` output run as written.
+
+### Changed
+
+- **`CLAUDE.md` re-initialized from the scaffold seed into a full runtime prompt** grounded in the repo as it exists on disk: the CLI architecture (the `register(sub)` extension point, `_dispatch` as the single exception→exit-code boundary, `_CliArgumentParser` and the `parser_class=` propagation that a new noun group must preserve), the three stable-contract modules (`_errors`, `_output`, `explain/`), identity, the vendored-skill rules, worktree layout, memory discipline, and the CI/deploy conventions. States plainly that the Notion surface is **not built yet** and parks it under a `## Roadmap` heading rather than describing it as working.
+- **`README.md` quickstart fixed and status made honest** — `uv run culture-agent-template`-era commands became `uv run notion ...` (previously `notion-agent`, which did not resolve), both console script names are documented, and a status callout plus a `## Roadmap` section replace the template-era "Make it your own" instructions, which described cloning *this* repo as a template rather than using it.
+
 ## [0.7.0] - 2026-08-24
 
 ### Added
