@@ -1,7 +1,7 @@
 [project]
-name = "culture-agent-template"
+name = "notion-agent"
 version = "0.7.0"
-description = "culture-agent-template — a clonable template for AgentCulture mesh agents."
+description = "Agent-first CLI for controlling Notion: pages, databases, blocks, and search. Also a communication lane — other AgentCulture agents use their own CLIs and skills to talk to each other through shared Notion pages and databases."
 readme = "README.md"
 license = "Apache-2.0"
 requires-python = ">=3.12"
@@ -16,18 +16,18 @@ classifiers = [
 dependencies = []
 
 [project.urls]
-Homepage = "https://github.com/agentculture/culture-agent-template"
-Issues = "https://github.com/agentculture/culture-agent-template/issues"
+Homepage = "https://github.com/agentculture/notion-agent"
+Issues = "https://github.com/agentculture/notion-agent/issues"
 
 [project.scripts]
-culture-agent-template = "culture_agent_template.cli:main"
+notion = "notion_agent.cli:main"
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["culture_agent_template"]
+packages = ["notion_agent"]
 
 [dependency-groups]
 dev = [
@@ -42,10 +42,10 @@ dev = [
 ]
 
 [tool.coverage.run]
-source = ["culture_agent_template"]
-omit = ["culture_agent_template/__pycache__/*"]
+source = ["notion_agent"]
+omit = ["notion_agent/__pycache__/*"]
 # Emit repo-relative paths in coverage.xml so SonarCloud maps them to
-# sonar.sources=culture_agent_template (absolute/.venv paths fail to map → empty coverage).
+# sonar.sources=notion_agent (absolute/.venv paths fail to map → empty coverage).
 relative_files = true
 
 [tool.coverage.report]
@@ -60,7 +60,7 @@ exclude_lines = [
 [tool.isort]
 profile = "black"
 line_length = 100
-known_first_party = ["culture_agent_template"]
+known_first_party = ["notion_agent"]
 
 [tool.black]
 line-length = 100

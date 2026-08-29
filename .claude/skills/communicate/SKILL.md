@@ -2,13 +2,13 @@
 name: communicate
 type: command
 description: >
-  Cross-repo + mesh communication from culture-agent-template: file tracked GitHub issues
+  Cross-repo + mesh communication from notion-agent: file tracked GitHub issues
   on sibling repos, fetch issues from sibling repos to inline current state
   into briefs, and send live messages to Culture mesh channels. Use when
-  the next step lives outside culture-agent-template (a brief for a sibling-repo agent, a
+  the next step lives outside notion-agent (a brief for a sibling-repo agent, a
   status ping for a Culture channel, or pulling an issue body + comments
-  into context). Issue posts auto-sign with `- culture-agent-template (Claude)`; mesh
-  messages are unsigned (the IRC nick is the speaker). Not for in-culture-agent-template
+  into context). Issue posts auto-sign with `- notion-agent (Claude)`; mesh
+  messages are unsigned (the IRC nick is the speaker). Not for in-notion-agent
   issues — use `gh issue create` or the `cicd` skill for those. Renamed
   from `coordinate` in steward 0.8.0; absorbed `gh-issues` in 0.9.1.
   Issue I/O is backed by `agtag` (>=0.1) starting in 0.11.0.
