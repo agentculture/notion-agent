@@ -1,6 +1,6 @@
 [project]
 name = "notion-agent"
-version = "0.7.0"
+version = "0.8.1"
 description = "Agent-first CLI for controlling Notion: pages, databases, blocks, and search. Also a communication lane — other AgentCulture agents use their own CLIs and skills to talk to each other through shared Notion pages and databases."
 readme = "README.md"
 license = "Apache-2.0"
@@ -20,7 +20,12 @@ Homepage = "https://github.com/agentculture/notion-agent"
 Issues = "https://github.com/agentculture/notion-agent/issues"
 
 [project.scripts]
+# Two names, one entry point. `notion` is the short primary command; the
+# `notion-agent` alias matches the argparse prog, the explain catalog, the
+# tests, and every doc string in the package, so commands copied out of
+# `learn` / `explain` output run as written.
 notion = "notion_agent.cli:main"
+notion-agent = "notion_agent.cli:main"
 
 [build-system]
 requires = ["hatchling"]

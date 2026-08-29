@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+import argparse
 import json
 
 import pytest
 
 from notion_agent import __version__
-from notion_agent.cli import main
+from notion_agent.cli import _build_parser, main
 from notion_agent.explain import known_paths
 
 
@@ -113,3 +114,52 @@ def test_every_catalog_path_resolves(capsys: pytest.CaptureFixture[str]) -> None
         rc = main(["explain", *path])
         assert rc == 0, f"explain {' '.join(path)} failed"
         capsys.readouterr()
+
+
+# Root aliases: catalog entries that name the tool itself rather than a verb, so
+# they have no counterpart in the parser. Both console scripts are listed so
+# `explain notion` and `explain notion-agent` each resolve.
+_ROOT_ALIASES = {(), ("notion",), ("notion-agent",)}
+
+
+def _registered_paths(
+    parser: argparse.ArgumentParser, prefix: tuple[str, ...] = ()
+) -> set[tuple[str, ...]]:
+    """Collect every command path the parser actually registers, recursively.
+
+    Walks the argparse subparser tree rather than the catalog, so this is an
+    *independent* enumeration — that independence is the whole point (see
+    :func:`test_every_registered_path_has_catalog_entry`).
+    """
+    paths: set[tuple[str, ...]] = set()
+    for action in parser._actions:
+        if isinstance(action, argparse._SubParsersAction):
+            for name, subparser in action.choices.items():
+                path = prefix + (name,)
+                paths.add(path)
+                paths |= _registered_paths(subparser, path)
+    return paths
+
+
+def test_every_registered_path_has_catalog_entry() -> None:
+    """Every registered noun/verb must have an `explain` entry.
+
+    `test_every_catalog_path_resolves` cannot catch a gap here: it iterates
+    `known_paths()`, which is derived from the catalog itself, so a command
+    registered but omitted from ENTRIES is simply never visited. This test
+    enumerates the parser instead and compares, which is what makes the
+    "a new verb without a catalog entry fails the suite" contract in CLAUDE.md
+    true.
+    """
+    missing = _registered_paths(_build_parser()) - set(known_paths())
+    assert not missing, "registered command(s) with no explain catalog entry: " + ", ".join(
+        " ".join(p) for p in sorted(missing)
+    )
+
+
+def test_no_orphan_catalog_entries() -> None:
+    """And no entry documents a command that no longer exists."""
+    orphans = set(known_paths()) - _registered_paths(_build_parser()) - _ROOT_ALIASES
+    assert not orphans, "catalog entr(ies) for unregistered command(s): " + ", ".join(
+        " ".join(p) for p in sorted(orphans)
+    )
