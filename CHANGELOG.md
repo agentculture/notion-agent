@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/). This project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.0] - 2026-08-30
+
+### Added
+
+- **The Notion control CLI (surface 1 of issue #1).** New nouns `search`, `page` (`get|create|update|append|archive|restore`), `db` (`get|query|row create|row update`), `block` (`get|children|append|update|delete|restore`) and `comment` (`list|add`), each a `register(sub)` module under `cli/_commands/` with an `explain` catalog entry and `--json`. Every id accepts a Notion id or URL. **Every write verb is dry-run by default** — it prints the request(s) it would send and exits 0 — and `--apply` performs it.
+- **`whoami` is now the Notion auth probe.** It keeps the `culture.yaml` identity block and adds workspace, integration, owner, token source and API version from `GET /users/me`; with no `NOTION_API_KEY` / `NOTION_TOKEN` it exits 2 with a hint. (Implemented by colleague — Qwen3.8-27B — via `ask-colleague write`.)
+- **Zero-dependency client layer** in `notion_agent/notion/`: `client.py` (urllib; `Notion-Version: 2026-03-11`; ~3 req/s throttle; `429` retried on any method, `5xx` only on `GET` so writes are never replayed into duplicates; `paginate()`; `NotionError` carrying Notion's `request_id`), `ids.py` (ids/URLs → dashed UUID), `markdown.py` (Markdown ⇄ blocks as pure functions with a round-trip test), `props.py` (flatten property values; build typed payloads from `Name=value`).
+- `cli/_commands/_common.py` — the shared verb plumbing: `get_client`, `notion_command`, `to_cli_error` (a `404 object_not_found` becomes *"not shared with the integration '<name>'"* with a Connections hint; `401` is exit 2), the dry-run `Plan` contract (method/path/body only — headers and the token never reach output), and `resolve_data_source` (a database id resolves to its single data source, or fails listing the choices).
+- Tests: `tests/fake_notion.py` (recorded-shape fake transport; no network) and 85 new tests across client, ids, markdown, props, whoami, page/search and db/block/comment; a learn-coverage test that fails when a registered noun is missing from `learn` output.
+- `docs/decisions.md` — issue #1's five parked unknowns, decided with reasoning; `docs/specs/` and `docs/plans/` — the devague frame and plan (`/scope` → `/think` → `/challenge` → `/spec-to-plan` → `/assign-to-workforce`) that produced this surface.
+
+### Changed
+
+- `README.md`, `CLAUDE.md`, `learn`, `overview` and the `explain` root entry now describe the shipped Notion surface (including the lane-split table and the Notion trademark note) instead of the template scaffold; surface 2 (the communication lane) moved under Roadmap.
+- `.gitignore` ignores `.devague/` (local frame state) alongside `.devex/` / `.teken/`.
+
 ## [0.8.1] - 2026-08-30
 
 ### Added

@@ -35,6 +35,7 @@ Second line of the same paragraph.
 
 - [ ] open task
 - [x] done task
+- a bullet right after a to-do
 
 > a quote
 > that continues
@@ -74,6 +75,7 @@ def test_block_shapes() -> None:
         "numbered_list_item",
         "to_do",
         "to_do",
+        "bulleted_list_item",
         "quote",
         "code",
         "divider",
@@ -85,8 +87,8 @@ def test_block_shapes() -> None:
     assert nested[0]["bulleted_list_item"]["children"][0]["type"] == "bulleted_list_item"
     assert blocks[8]["to_do"]["checked"] is False
     assert blocks[9]["to_do"]["checked"] is True
-    assert blocks[11]["code"]["language"] == "python"
-    assert plain_text(blocks[11]["code"]["rich_text"]) == 'print("hi")'
+    assert blocks[12]["code"]["language"] == "python"
+    assert plain_text(blocks[12]["code"]["rich_text"]) == 'print("hi")'
     # Every block is a valid append payload: object + type + payload key.
     for b in blocks:
         assert b["object"] == "block" and b["type"] in b

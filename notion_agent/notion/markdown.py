@@ -225,12 +225,24 @@ def blocks_to_markdown(blocks: list[dict[str, Any]], *, indent: int = 0) -> str:
         chunk = _render_block(block, indent=indent, number=number)
         if chunk is None:
             continue
-        separator_free = btype in _LIST_TYPES and prev_type == btype
+        separator_free = _same_list_run(prev_type, btype)
         if lines and not separator_free:
             lines.append("")
         lines.append(chunk)
         prev_type = btype
     return "\n".join(lines).rstrip("\n")
+
+
+_DASH_LISTS = {"bulleted_list_item", "to_do"}
+
+
+def _same_list_run(prev: str | None, current: str) -> bool:
+    """Adjacent list items render without a blank line when Markdown treats them as one list."""
+    if prev is None:
+        return False
+    if current == "numbered_list_item":
+        return prev == "numbered_list_item"
+    return current in _DASH_LISTS and prev in _DASH_LISTS
 
 
 def _render_block(block: dict[str, Any], *, indent: int, number: int) -> str | None:
