@@ -221,6 +221,65 @@ def build_properties(schema: dict[str, Any], assignments: list[str]) -> dict[str
     return out
 
 
+SCHEMA_TYPES = frozenset(
+    {
+        "title",
+        "rich_text",
+        "number",
+        "select",
+        "multi_select",
+        "status",
+        "checkbox",
+        "date",
+        "url",
+        "email",
+        "phone_number",
+        "people",
+        "files",
+        "relation",
+    }
+)
+
+
+def build_schema(specs: list[str]) -> dict[str, Any]:
+    """``["Name=title", "Kind=select:agent,human", "Rel=relation:<ds-id>"]`` → schema payload.
+
+    The shape ``POST /databases`` expects under ``initial_data_source.properties``.
+    Exactly one ``title`` property is required; when none is given a ``Name``
+    title property is added so the database is always usable.
+    """
+    schema: dict[str, Any] = {}
+    for spec in specs:
+        name, value = parse_assignment(spec)
+        ptype, _, extra = value.partition(":")
+        ptype = ptype.strip().lower()
+        if ptype not in SCHEMA_TYPES:
+            raise ValueError(
+                f"{name}: unsupported property type '{ptype}'; "
+                f"known: {', '.join(sorted(SCHEMA_TYPES))}"
+            )
+        if name in schema:
+            raise ValueError(f"duplicate property '{name}'")
+        if ptype in ("select", "multi_select"):
+            schema[name] = {ptype: {"options": [{"name": o} for o in _split_list(extra)]}}
+        elif ptype == "relation":
+            if not extra:
+                raise ValueError(
+                    f"{name}: relation needs a target, e.g. {name}=relation:<data-source-id>"
+                )
+            schema[name] = {"relation": {"data_source_id": extra.strip(), "single_property": {}}}
+        elif ptype == "number":
+            schema[name] = {"number": {"format": extra.strip() or "number"}}
+        else:
+            schema[name] = {ptype: {}}
+    titles = [n for n, v in schema.items() if "title" in v]
+    if len(titles) > 1:
+        raise ValueError(f"only one title property is allowed (got {', '.join(titles)})")
+    if not titles:
+        schema = {"Name": {"title": {}}, **schema}
+    return schema
+
+
 def schema_summary(schema: dict[str, Any]) -> list[dict[str, Any]]:
     """Compact, agent-readable view of a data source's property schema."""
     rows = []

@@ -259,12 +259,34 @@ data source (a database with several fails, listing them).
 
 ## Verbs
 
+- `db create --parent <page-id> --title T --prop "Name=type[:opts]"` — new database.
 - `db get <id>` — the property schema (names, types, options).
 - `db query <id> [--where "Prop=value"] [--filter JSON] [--sort Prop:desc] [--limit N]`
 - `db row create <id> --title T --set K=V ...` — add a row (dry-run by default).
 - `db row update <page-id> --set K=V ...` — change a row's properties.
 
 See `notion-agent explain db <verb>` for each.
+"""
+
+_DB_CREATE = """\
+# notion-agent db create
+
+Create a database (and its single data source) under a parent page. Dry-run
+by default; `--apply` performs it. Properties are `Name=type[:options]`; a
+`Name` title property is added when you give none.
+
+## Usage
+
+    notion-agent db create --parent <page-id> --title "Agents db" \\
+        --prop "Name=title" --prop "Kind=select:agent,human" --prop "Active=checkbox" \\
+        --prop "Tags=multi_select:core,infra" --prop "Since=date" --prop "Home=url"
+    notion-agent db create --parent <page-id> --title "Links" \\
+        --prop "Rel=relation:<data-source-id>" --apply
+
+Types: title, rich_text, number[:format], select[:a,b], multi_select[:a,b],
+status, checkbox, date, url, email, phone_number, people, files,
+relation:<data-source-id>. The result names the new data source id — pass it
+to `db row create` / `db query`.
 """
 
 _DB_GET = """\
@@ -468,6 +490,7 @@ ENTRIES: dict[tuple[str, ...], str] = {
     ("page", "archive"): _PAGE_ARCHIVE,
     ("page", "restore"): _PAGE_RESTORE,
     ("db",): _DB,
+    ("db", "create"): _DB_CREATE,
     ("db", "get"): _DB_GET,
     ("db", "query"): _DB_QUERY,
     ("db", "row"): _DB_ROW,

@@ -32,7 +32,7 @@ Commands
   notion-agent whoami                    Identity + auth probe (workspace, integration).
   notion-agent search [query]            Find pages and data sources.
   notion-agent page get|create|update|append|archive|restore
-  notion-agent db get|query|row create|row update
+  notion-agent db create|get|query|row create|row update
   notion-agent block get|children|append|update|delete|restore
   notion-agent comment list|add
   notion-agent learn                     This self-teaching prompt.
@@ -77,7 +77,10 @@ def _as_json_payload() -> dict[str, object]:
             {"path": ["whoami"], "summary": "Identity + Notion auth probe."},
             {"path": ["search"], "summary": "Find pages and data sources."},
             {"path": ["page"], "summary": "get|create|update|append|archive|restore a page."},
-            {"path": ["db"], "summary": "get|query a data source; row create|update."},
+            {
+                "path": ["db"],
+                "summary": "create a database; get|query a data source; row create|update.",
+            },
             {"path": ["block"], "summary": "get|children|append|update|delete|restore blocks."},
             {"path": ["comment"], "summary": "list|add comments on a page."},
             {"path": ["learn"], "summary": "Self-teaching prompt."},

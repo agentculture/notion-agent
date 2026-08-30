@@ -29,7 +29,7 @@ _VERBS = [
     "whoami — identity probe (nick, version, backend, model) + Notion auth probe",
     "search [query] — find pages and data sources",
     "page get|create|update|append|archive|restore — pages as Markdown",
-    "db get|query|row create|row update — data sources and rows",
+    "db create|get|query|row create|row update — databases, data sources, rows",
     "block get|children|append|update|delete|restore — individual blocks",
     "comment list|add — page comments",
     "learn — structured self-teaching prompt",

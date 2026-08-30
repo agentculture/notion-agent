@@ -6,6 +6,7 @@ import pytest
 
 from notion_agent.notion.props import (
     build_properties,
+    build_schema,
     build_value,
     flatten_properties,
     page_title,
@@ -152,3 +153,33 @@ def test_schema_summary() -> None:
     assert rows["Status"]["options"] == ["Not started", "In progress"]
     assert rows["Progress"]["writable"] is False
     assert rows["Project name"]["type"] == "title"
+
+
+def test_build_schema_shapes() -> None:
+    schema = build_schema(
+        [
+            "Name=title",
+            "Kind=select:agent, human",
+            "Active=checkbox",
+            "Rel=relation:ds-1",
+            "N=number:percent",
+        ]
+    )
+    assert schema["Name"] == {"title": {}}
+    assert schema["Kind"] == {"select": {"options": [{"name": "agent"}, {"name": "human"}]}}
+    assert schema["Active"] == {"checkbox": {}}
+    assert schema["Rel"] == {"relation": {"data_source_id": "ds-1", "single_property": {}}}
+    assert schema["N"] == {"number": {"format": "percent"}}
+
+
+def test_build_schema_adds_a_title_when_missing_and_rejects_bad_specs() -> None:
+    assert list(build_schema(["Kind=select"])) == ["Name", "Kind"]
+    assert build_schema([]) == {"Name": {"title": {}}}
+    with pytest.raises(ValueError, match="unsupported property type"):
+        build_schema(["X=formula"])
+    with pytest.raises(ValueError, match="only one title"):
+        build_schema(["A=title", "B=title"])
+    with pytest.raises(ValueError, match="relation needs a target"):
+        build_schema(["R=relation"])
+    with pytest.raises(ValueError, match="duplicate"):
+        build_schema(["A=url", "A=email"])

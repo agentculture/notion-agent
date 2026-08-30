@@ -439,3 +439,77 @@ def test_failures_name_sharing_and_request_id_but_never_the_token(monkeypatch, c
     assert "shared" in out.err and "req-123" in out.err
     assert "secret-xyz" not in out.err
     assert "secret-xyz" not in out.out
+
+
+# --------------------------------------------------------------------------
+# db create
+# --------------------------------------------------------------------------
+
+
+def test_db_create_is_dry_run_by_default(fake, capsys) -> None:
+    assert (
+        run(
+            [
+                "db",
+                "create",
+                "--parent",
+                PAGE_ID,
+                "--title",
+                "Agents db",
+                "--prop",
+                "Kind=select:agent",
+            ]
+        )
+        == 0
+    )
+    out = capsys.readouterr().out
+    assert out.startswith("dry-run:") and "POST /databases" in out
+    assert fake.mutations() == []
+
+
+def test_db_create_apply_posts_databases(monkeypatch, capsys) -> None:
+    fake = with_client(
+        monkeypatch,
+        FakeNotion()
+        .standard()
+        .on(
+            "POST",
+            "/databases",
+            {
+                "object": "database",
+                "id": DATABASE_ID,
+                "data_sources": [{"id": DATA_SOURCE_ID, "name": "Agents db"}],
+                "url": "https://app.notion.com/p/x",
+            },
+        ),
+    )
+    rc = run(
+        [
+            "db",
+            "create",
+            "--parent",
+            PAGE_ID,
+            "--title",
+            "Agents db",
+            "--prop",
+            "Kind=select:agent,human",
+            "--prop",
+            "Active=checkbox",
+            "--apply",
+            "--json",
+        ]
+    )
+    assert rc == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["data_source_id"] == DATA_SOURCE_ID
+    (req,) = fake.mutations()
+    assert req.method == "POST" and req.path == "/databases"
+    assert req.body["parent"] == {"type": "page_id", "page_id": PAGE_ID}
+    props_sent = req.body["initial_data_source"]["properties"]
+    assert list(props_sent) == ["Name", "Kind", "Active"]
+    assert props_sent["Kind"]["select"]["options"][1] == {"name": "human"}
+
+
+def test_db_create_rejects_bad_prop_spec(fake, capsys) -> None:
+    assert run(["db", "create", "--parent", PAGE_ID, "--title", "x", "--prop", "F=formula"]) == 1
+    assert "unsupported property type" in capsys.readouterr().err

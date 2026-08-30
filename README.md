@@ -60,6 +60,7 @@ too. The runtime has **no third-party dependencies** — the client is `urllib`.
 | `page update <id> [--title T] [--set K=V] [--icon E]` | Change only the given properties. |
 | `page append <id> --body MD [--after BLOCK]` | Append Markdown as blocks. |
 | `page archive <id>` / `page restore <id>` | Trash / untrash (`in_trash`). |
+| `db create --parent <page-id> --title T --prop "Name=type[:opts]"` | New database (+ data source) under a page. |
 | `db get <id>` | A data source's property schema. |
 | `db query <id> [--where "Prop=v"] [--filter JSON] [--sort Prop:desc]` | Rows, flattened. |
 | `db row create <id> --title T --set K=V` / `db row update <page-id> --set K=V` | Typed row writes. |

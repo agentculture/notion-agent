@@ -42,7 +42,12 @@ from notion_agent.cli._errors import EXIT_USER_ERROR, CliError
 from notion_agent.cli._output import emit_result
 from notion_agent.notion import props
 from notion_agent.notion.client import NotionError
-from notion_agent.notion.markdown import BLOCKS_PER_REQUEST, chunk_blocks, markdown_to_blocks
+from notion_agent.notion.markdown import (
+    BLOCKS_PER_REQUEST,
+    chunk_blocks,
+    markdown_to_blocks,
+    rich_text,
+)
 
 DEFAULT_LIMIT = 50
 
@@ -277,6 +282,47 @@ def cmd_query(args: argparse.Namespace) -> int:
 
 
 @notion_command
+def cmd_create(args: argparse.Namespace) -> int:
+    """``db create`` — a new database (with one data source) under a page."""
+    parent_id = parse_id(args.parent, "parent page id")
+    schema = props.build_schema(args.prop or [])
+    body: dict[str, Any] = {
+        "parent": {"type": "page_id", "page_id": parent_id},
+        "title": rich_text(args.title),
+        "initial_data_source": {"properties": schema},
+    }
+    if args.inline:
+        body["is_inline"] = True
+    plan = Plan(f"create database '{args.title}' under page {parent_id}")
+    plan.add("POST", "/databases", body, describe="create the database + its data source")
+    if not applying(args):
+        emit_plan(plan, json_mode=json_mode(args))
+        return 0
+    client = get_client(args)
+    created = client.request("POST", "/databases", body=body)
+    sources = created.get("data_sources") or []
+    ds_id = sources[0]["id"] if sources else ""
+    if json_mode(args):
+        emit_result(
+            {
+                "id": created.get("id"),
+                "data_source_id": ds_id,
+                "url": created.get("url"),
+                "title": args.title,
+                "properties": props.schema_summary(schema),
+            },
+            json_mode=True,
+        )
+    else:
+        emit_result(
+            f"created database {created.get('id', '')} (data source {ds_id})\n"
+            f"{created.get('url', '')}",
+            json_mode=False,
+        )
+    return 0
+
+
+@notion_command
 def cmd_row_create(args: argparse.Namespace) -> int:
     client = get_client(args)
     source = resolve_data_source(client, parse_id(args.id, "data source or database id"))
@@ -403,6 +449,21 @@ def register(sub: argparse._SubParsersAction) -> None:
     add_json_flag(query)
     _add_raw_flag(query)
     query.set_defaults(func=cmd_query)
+
+    create_db = noun.add_parser("create", help="Create a database (with one data source).")
+    create_db.add_argument("--parent", required=True, help="Parent page id or Notion URL.")
+    create_db.add_argument("--title", required=True, help="Database title.")
+    create_db.add_argument(
+        "--prop",
+        action="append",
+        metavar="NAME=TYPE[:OPTIONS]",
+        help="Schema property, e.g. Kind=select:agent,human or Owner=people; repeatable. "
+        "A 'Name' title property is added when none is given.",
+    )
+    create_db.add_argument("--inline", action="store_true", help="Create as an inline database.")
+    add_apply_flag(create_db)
+    add_json_flag(create_db)
+    create_db.set_defaults(func=cmd_create)
 
     row = noun.add_parser("row", help="Create and update rows (pages in a data source).")
     add_json_flag(row)
