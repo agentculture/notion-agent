@@ -91,17 +91,22 @@ def test_block_shapes() -> None:
     assert plain_text(blocks[12]["code"]["rich_text"]) == 'print("hi")'
     # Every block is a valid append payload: object + type + payload key.
     for b in blocks:
-        assert b["object"] == "block" and b["type"] in b
+        assert b["object"] == "block"
+        assert b["type"] in b
 
 
 def test_inline_marks() -> None:
     spans = markdown_to_rich_text("plain **bold** *it* `c` ~~s~~ [l](http://x)")
     texts = [(s["text"]["content"], s["annotations"], s["text"]["link"]) for s in spans]
     assert texts[0] == ("plain ", spans[0]["annotations"], None)
-    assert texts[1][0] == "bold" and texts[1][1]["bold"]
-    assert texts[3][0] == "it" and texts[3][1]["italic"]
-    assert texts[5][0] == "c" and texts[5][1]["code"]
-    assert texts[7][0] == "s" and texts[7][1]["strikethrough"]
+    assert texts[1][0] == "bold"
+    assert texts[1][1]["bold"]
+    assert texts[3][0] == "it"
+    assert texts[3][1]["italic"]
+    assert texts[5][0] == "c"
+    assert texts[5][1]["code"]
+    assert texts[7][0] == "s"
+    assert texts[7][1]["strikethrough"]
     assert texts[9] == ("l", spans[9]["annotations"], {"url": "http://x"})
     assert rich_text_to_markdown(spans) == "plain **bold** *it* `c` ~~s~~ [l](http://x)"
 

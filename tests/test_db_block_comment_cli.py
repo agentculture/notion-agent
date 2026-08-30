@@ -33,7 +33,7 @@ from tests.fake_notion import (
 )
 
 
-@pytest.fixture()
+@pytest.fixture
 def fake(monkeypatch: pytest.MonkeyPatch) -> FakeNotion:
     transport = FakeNotion().standard()
     monkeypatch.setattr(
@@ -108,8 +108,10 @@ def test_db_get_on_a_multi_source_database_lists_the_choices(monkeypatch, capsys
     )
     assert run(["db", "get", DATABASE_ID]) == 1
     err = capsys.readouterr().err
-    assert "a" * 32 in err and "b" * 32 in err
-    assert err.startswith("error:") and "hint:" in err
+    assert "a" * 32 in err
+    assert "b" * 32 in err
+    assert err.startswith("error:")
+    assert "hint:" in err
 
 
 # --------------------------------------------------------------------------
@@ -235,7 +237,8 @@ def test_db_row_create_with_body_puts_blocks_in_children(fake, capsys) -> None:
 def test_db_row_create_refuses_a_read_only_property(fake, capsys) -> None:
     assert run(["db", "row", "create", DATA_SOURCE_ID, "--set", "Progress=1"]) == 1
     err = capsys.readouterr().err
-    assert "Progress" in err and "read-only" in err
+    assert "Progress" in err
+    assert "read-only" in err
     assert fake.mutations() == []
 
 
@@ -324,7 +327,8 @@ def test_block_update_refuses_a_divider(monkeypatch, capsys) -> None:
     )
     assert run(["block", "update", BLOCK_ID, "--text", "hi", "--apply"]) == 1
     err = capsys.readouterr().err
-    assert "divider" in err and "hint:" in err
+    assert "divider" in err
+    assert "hint:" in err
     assert transport.mutations() == []
 
 
@@ -372,7 +376,9 @@ def test_comment_list_renders_author_and_text(monkeypatch, capsys) -> None:
     with_client(monkeypatch, FakeNotion().standard().on("GET", "/comments", listing([one])))
     assert run(["comment", "list", PAGE_ID]) == 0
     line = capsys.readouterr().out.strip()
-    assert "Ori" in line and "hi" in line and "2026-08-30" in line
+    assert "Ori" in line
+    assert "hi" in line
+    assert "2026-08-30" in line
 
 
 def test_comment_add_dry_run_then_apply(fake, capsys) -> None:
@@ -436,7 +442,8 @@ def test_failures_name_sharing_and_request_id_but_never_the_token(monkeypatch, c
     )
     assert run(["block", "get", BLOCK_ID]) == 1
     out = capsys.readouterr()
-    assert "shared" in out.err and "req-123" in out.err
+    assert "shared" in out.err
+    assert "req-123" in out.err
     assert "secret-xyz" not in out.err
     assert "secret-xyz" not in out.out
 
@@ -463,7 +470,8 @@ def test_db_create_is_dry_run_by_default(fake, capsys) -> None:
         == 0
     )
     out = capsys.readouterr().out
-    assert out.startswith("dry-run:") and "POST /databases" in out
+    assert out.startswith("dry-run:")
+    assert "POST /databases" in out
     assert fake.mutations() == []
 
 
@@ -503,7 +511,8 @@ def test_db_create_apply_posts_databases(monkeypatch, capsys) -> None:
     payload = json.loads(capsys.readouterr().out)
     assert payload["data_source_id"] == DATA_SOURCE_ID
     (req,) = fake.mutations()
-    assert req.method == "POST" and req.path == "/databases"
+    assert req.method == "POST"
+    assert req.path == "/databases"
     assert req.body["parent"] == {"type": "page_id", "page_id": PAGE_ID}
     props_sent = req.body["initial_data_source"]["properties"]
     assert list(props_sent) == ["Name", "Kind", "Active"]

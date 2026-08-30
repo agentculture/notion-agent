@@ -332,13 +332,13 @@ def _file_url(payload: dict[str, Any]) -> str:
 # markdown → blocks
 # --------------------------------------------------------------------------
 
-_HEADING_RE = re.compile(r"^(#{1,6})\s+(.*)$")
-_BULLET_RE = re.compile(r"^(\s*)[-*+]\s+(.*)$")
-_TODO_RE = re.compile(r"^(\s*)[-*+]\s+\[( |x|X)\]\s*(.*)$")
-_NUMBER_RE = re.compile(r"^(\s*)\d+[.)]\s+(.*)$")
-_QUOTE_RE = re.compile(r"^>\s?(.*)$")
-_FENCE_RE = re.compile(r"^```\s*(\S*)\s*$")
-_DIVIDER_RE = re.compile(r"^(-{3,}|\*{3,}|_{3,})\s*$")
+_HEADING_RE = re.compile(r"^(#{1,6})[ \t]+(.*)$")
+_BULLET_RE = re.compile(r"^([ \t]*)[-*+][ \t]+(.*)$")
+_TODO_RE = re.compile(r"^([ \t]*)[-*+][ \t]+\[([ xX])\][ \t]*(.*)$")
+_NUMBER_RE = re.compile(r"^([ \t]*)\d+[.)][ \t]+(.*)$")
+_QUOTE_RE = re.compile(r"^>[ \t]?(.*)$")
+_FENCE_RE = re.compile(r"^```[ \t]*([^\s`]*)[ \t]*$")
+_DIVIDER_RE = re.compile(r"^(?:-{3,}|\*{3,}|_{3,})$")
 
 
 def _block(btype: str, spans: list[dict[str, Any]], **extra: Any) -> dict[str, Any]:

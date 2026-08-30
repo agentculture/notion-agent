@@ -54,57 +54,68 @@ def _user_label(user: dict[str, Any] | None) -> str:
     return str(user.get("name") or user.get("id") or "")
 
 
+def _flat_date(value: Any) -> Any:
+    if not value:
+        return None
+    start, end = value.get("start"), value.get("end")
+    return f"{start}/{end}" if end else start
+
+
+def _flat_files(value: Any) -> list[Any]:
+    out = []
+    for f in value or []:
+        kind = f.get("type")
+        url = (f.get(kind) or {}).get("url") if kind else None
+        out.append(url or f.get("name"))
+    return out
+
+
+def _flat_formula(value: Any) -> Any:
+    inner = value or {}
+    kind = inner.get("type", "")
+    return flatten_value({"type": kind, kind: inner.get(kind)})
+
+
+def _flat_rollup(value: Any) -> Any:
+    inner = value or {}
+    kind = inner.get("type", "")
+    if kind == "array":
+        return [flatten_value(item) for item in inner.get("array", [])]
+    return inner.get(kind)
+
+
+def _flat_unique_id(value: Any) -> Any:
+    inner = value or {}
+    prefix, number = inner.get("prefix"), inner.get("number")
+    return f"{prefix}-{number}" if prefix else number
+
+
+_FLATTENERS: dict[str, Any] = {
+    "title": plain_text,
+    "rich_text": plain_text,
+    "select": lambda v: (v or {}).get("name") if v else None,
+    "status": lambda v: (v or {}).get("name") if v else None,
+    "multi_select": lambda v: [opt.get("name") for opt in v or []],
+    "date": _flat_date,
+    "people": lambda v: [_user_label(u) for u in v or []],
+    "created_by": _user_label,
+    "last_edited_by": _user_label,
+    "files": _flat_files,
+    "relation": lambda v: [r.get("id") for r in v or []],
+    "formula": _flat_formula,
+    "rollup": _flat_rollup,
+    "unique_id": _flat_unique_id,
+    "verification": lambda v: (v or {}).get("state"),
+}
+
+
 def flatten_value(prop: dict[str, Any]) -> Any:
     """Reduce one property object to a plain Python value."""
     ptype = prop.get("type", "")
     value = prop.get(ptype)
-    if ptype in ("title", "rich_text"):
-        return plain_text(value)
-    if ptype in ("select", "status"):
-        return (value or {}).get("name") if value else None
-    if ptype == "multi_select":
-        return [opt.get("name") for opt in value or []]
-    if ptype == "date":
-        if not value:
-            return None
-        start, end = value.get("start"), value.get("end")
-        return f"{start}/{end}" if end else start
-    if ptype == "people":
-        return [_user_label(u) for u in value or []]
-    if ptype in ("created_by", "last_edited_by"):
-        return _user_label(value)
-    if ptype == "files":
-        out = []
-        for f in value or []:
-            kind = f.get("type")
-            url = (f.get(kind) or {}).get("url") if kind else None
-            out.append(url or f.get("name"))
-        return out
-    if ptype == "relation":
-        return [r.get("id") for r in value or []]
-    if ptype == "formula":
-        inner = value or {}
-        return flatten_value(
-            {"type": inner.get("type", ""), inner.get("type", ""): inner.get(inner.get("type", ""))}
-        )
-    if ptype == "rollup":
-        inner = value or {}
-        kind = inner.get("type", "")
-        if kind == "array":
-            return [flatten_value(item) for item in inner.get("array", [])]
-        return inner.get(kind)
-    if ptype == "unique_id":
-        inner = value or {}
-        prefix = inner.get("prefix")
-        number = inner.get("number")
-        return f"{prefix}-{number}" if prefix else number
-    if ptype == "verification":
-        return (value or {}).get("state")
-    if ptype in ("string", "boolean", "number", "checkbox", "url", "email", "phone_number"):
-        return value
-    if ptype in ("created_time", "last_edited_time"):
-        return value
-    return value
+    flattener = _FLATTENERS.get(ptype)
+    # Scalars (number, checkbox, url, email, phone_number, timestamps, ...) pass through.
+    return flattener(value) if flattener else value
 
 
 def flatten_properties(properties: dict[str, Any]) -> dict[str, Any]:
@@ -144,57 +155,70 @@ def _split_list(value: str) -> list[str]:
     return [v.strip() for v in value.split(",") if v.strip()]
 
 
+def _build_number(value: str) -> dict[str, Any]:
+    if value == "":
+        return {"number": None}
+    try:
+        number = int(value) if value.lstrip("-").isdigit() else float(value)
+    except ValueError as err:
+        raise ValueError(f"'{value}' is not a number") from err
+    return {"number": number}
+
+
+def _build_checkbox(value: str) -> dict[str, Any]:
+    lowered = value.lower()
+    if lowered in _TRUE:
+        return {"checkbox": True}
+    if lowered in _FALSE:
+        return {"checkbox": False}
+    raise ValueError(f"'{value}' is not a boolean (use true/false)")
+
+
+def _build_date(value: str) -> dict[str, Any]:
+    if not value:
+        return {"date": None}
+    start, _, end = value.partition("/")
+    payload: dict[str, Any] = {"start": start}
+    if end:
+        payload["end"] = end
+    return {"date": payload}
+
+
+def _build_files(value: str) -> dict[str, Any]:
+    return {
+        "files": [
+            {"type": "external", "name": v.rsplit("/", 1)[-1] or v, "external": {"url": v}}
+            for v in _split_list(value)
+        ]
+    }
+
+
+_BUILDERS: dict[str, Any] = {
+    "title": lambda v: {"title": rich_text(v)},
+    "rich_text": lambda v: {"rich_text": rich_text(v)},
+    "number": _build_number,
+    "select": lambda v: {"select": {"name": v} if v else None},
+    "status": lambda v: {"status": {"name": v}},
+    "multi_select": lambda v: {"multi_select": [{"name": x} for x in _split_list(v)]},
+    "checkbox": _build_checkbox,
+    "date": _build_date,
+    "url": lambda v: {"url": v or None},
+    "email": lambda v: {"email": v or None},
+    "phone_number": lambda v: {"phone_number": v or None},
+    "people": lambda v: {"people": [{"object": "user", "id": x} for x in _split_list(v)]},
+    "relation": lambda v: {"relation": [{"id": x} for x in _split_list(v)]},
+    "files": _build_files,
+}
+
+
 def build_value(ptype: str, value: str) -> dict[str, Any]:
     """Build the API payload for one property of type ``ptype``."""
     if ptype in READ_ONLY_TYPES:
         raise ValueError(f"property type '{ptype}' is read-only")
-    if ptype == "title":
-        return {"title": rich_text(value)}
-    if ptype == "rich_text":
-        return {"rich_text": rich_text(value)}
-    if ptype == "number":
-        if value == "":
-            return {"number": None}
-        try:
-            number = int(value) if value.lstrip("-").isdigit() else float(value)
-        except ValueError as err:
-            raise ValueError(f"'{value}' is not a number") from err
-        return {"number": number}
-    if ptype == "select":
-        return {"select": {"name": value} if value else None}
-    if ptype == "status":
-        return {"status": {"name": value}}
-    if ptype == "multi_select":
-        return {"multi_select": [{"name": v} for v in _split_list(value)]}
-    if ptype == "checkbox":
-        lowered = value.lower()
-        if lowered in _TRUE:
-            return {"checkbox": True}
-        if lowered in _FALSE:
-            return {"checkbox": False}
-        raise ValueError(f"'{value}' is not a boolean (use true/false)")
-    if ptype == "date":
-        if not value:
-            return {"date": None}
-        start, _, end = value.partition("/")
-        payload: dict[str, Any] = {"start": start}
-        if end:
-            payload["end"] = end
-        return {"date": payload}
-    if ptype in ("url", "email", "phone_number"):
-        return {ptype: value or None}
-    if ptype == "people":
-        return {"people": [{"object": "user", "id": v} for v in _split_list(value)]}
-    if ptype == "relation":
-        return {"relation": [{"id": v} for v in _split_list(value)]}
-    if ptype == "files":
-        return {
-            "files": [
-                {"type": "external", "name": v.rsplit("/", 1)[-1] or v, "external": {"url": v}}
-                for v in _split_list(value)
-            ]
-        }
-    raise ValueError(f"unsupported property type '{ptype}'")
+    builder = _BUILDERS.get(ptype)
+    if builder is None:
+        raise ValueError(f"unsupported property type '{ptype}'")
+    return builder(value)
 
 
 def resolve_property_name(schema: dict[str, Any], name: str) -> str:

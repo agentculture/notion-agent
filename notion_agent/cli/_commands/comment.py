@@ -36,14 +36,14 @@ def _author(comment: dict[str, Any]) -> str:
 
 
 @notion_command
-def cmd_list(args: argparse.Namespace) -> int:
+def cmd_list(args: argparse.Namespace) -> None:
     client = get_client(args)
     target = parse_id(args.id, "page or block id")
     comments = list(client.list_comments(target, limit=args.limit))
     as_json = json_mode(args)
     if args.raw:
         emit_result(comments if as_json else json.dumps(comments, indent=2), json_mode=as_json)
-        return 0
+        return
     rows = [
         {
             "id": c.get("id"),
@@ -56,9 +56,9 @@ def cmd_list(args: argparse.Namespace) -> int:
     ]
     if as_json:
         emit_result(rows, json_mode=True)
-        return 0
+        return
     if not rows:
-        return 0
+        return
     emit_result(
         "\n".join(
             "\t".join([str(r["created_time"] or ""), str(r["author"]), str(r["text"])])
@@ -66,11 +66,10 @@ def cmd_list(args: argparse.Namespace) -> int:
         ),
         json_mode=False,
     )
-    return 0
 
 
 @notion_command
-def cmd_add(args: argparse.Namespace) -> int:
+def cmd_add(args: argparse.Namespace) -> None:
     client = get_client(args)
     text = read_body(args)
     if not text or not text.strip():
@@ -91,7 +90,7 @@ def cmd_add(args: argparse.Namespace) -> int:
     plan.add("POST", "/comments", body)
     if not applying(args):
         emit_plan(plan, json_mode=json_mode(args))
-        return 0
+        return
     created = client.request("POST", "/comments", body=body)
     comment_id = created.get("id", "")
     if json_mode(args):
@@ -100,7 +99,6 @@ def cmd_add(args: argparse.Namespace) -> int:
         )
     else:
         emit_result(f"added comment {comment_id}", json_mode=False)
-    return 0
 
 
 def register(sub: argparse._SubParsersAction) -> None:

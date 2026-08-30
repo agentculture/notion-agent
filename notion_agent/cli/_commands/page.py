@@ -58,6 +58,10 @@ FOLLOW_UP_DESCRIBE = "follow-up append (page id known after create)"
 # --------------------------------------------------------------------------
 
 
+_ID_HELP = "Page id or Notion URL."
+_ID_WHAT = "page id"
+
+
 def _parent_label(parent: dict[str, Any] | None) -> str:
     if not parent:
         return ""
@@ -88,8 +92,8 @@ def _title_payload(name: str, title: str) -> dict[str, Any]:
 # --------------------------------------------------------------------------
 
 
-def cmd_page_get(args: argparse.Namespace) -> int:
-    page_id = parse_id(args.id, "page id")
+def cmd_page_get(args: argparse.Namespace) -> None:
+    page_id = parse_id(args.id, _ID_WHAT)
     client = get_client(args)
     page = client.get_page(page_id)
     blocks: list[dict[str, Any]] = []
@@ -110,7 +114,7 @@ def cmd_page_get(args: argparse.Namespace) -> int:
         if args.raw:
             record["raw"] = {"page": page, "blocks": blocks}
         emit_result(record, json_mode=True)
-        return 0
+        return
 
     lines = [
         f"# {record['title']}",
@@ -125,7 +129,6 @@ def cmd_page_get(args: argparse.Namespace) -> int:
     lines.append("")
     lines.append(markdown)
     emit_result("\n".join(lines).rstrip("\n"), json_mode=False)
-    return 0
 
 
 def _render_value(value: Any) -> str:
@@ -203,7 +206,7 @@ def _create_plan(
     return plan, chunks
 
 
-def cmd_page_create(args: argparse.Namespace) -> int:
+def cmd_page_create(args: argparse.Namespace) -> None:
     client = get_client(args)
     parent, data_source = _resolve_parent(client, args.parent)
     properties = _create_properties(args, data_source)
@@ -211,7 +214,7 @@ def cmd_page_create(args: argparse.Namespace) -> int:
 
     if not applying(args):
         emit_plan(plan, json_mode=json_mode(args))
-        return 0
+        return
 
     created = client.request("POST", "/pages", body=plan.steps[0].body)
     page_id = created.get("id", "")
@@ -245,7 +248,6 @@ def cmd_page_create(args: argparse.Namespace) -> int:
         )
     else:
         emit_result(f"created page {page_id}\n{created.get('url', '')}", json_mode=False)
-    return 0
 
 
 # --------------------------------------------------------------------------
@@ -275,8 +277,8 @@ def _update_properties(
     return payload
 
 
-def cmd_page_update(args: argparse.Namespace) -> int:
-    page_id = parse_id(args.id, "page id")
+def cmd_page_update(args: argparse.Namespace) -> None:
+    page_id = parse_id(args.id, _ID_WHAT)
     sets = list(getattr(args, "set", None) or [])
     if args.title is None and not sets and not args.icon:
         raise CliError(
@@ -298,7 +300,7 @@ def cmd_page_update(args: argparse.Namespace) -> int:
     plan.add("PATCH", f"/pages/{page_id}", body)
     if not applying(args):
         emit_plan(plan, json_mode=json_mode(args))
-        return 0
+        return
     updated = run_plan(client, plan)[0]
     if json_mode(args):
         emit_result(
@@ -312,7 +314,6 @@ def cmd_page_update(args: argparse.Namespace) -> int:
         )
     else:
         emit_result(f"updated page {page_id}", json_mode=False)
-    return 0
 
 
 # --------------------------------------------------------------------------
@@ -320,8 +321,8 @@ def cmd_page_update(args: argparse.Namespace) -> int:
 # --------------------------------------------------------------------------
 
 
-def cmd_page_append(args: argparse.Namespace) -> int:
-    page_id = parse_id(args.id, "page id")
+def cmd_page_append(args: argparse.Namespace) -> None:
+    page_id = parse_id(args.id, _ID_WHAT)
     blocks = _body_blocks(args)
     if not blocks:
         raise CliError(
@@ -339,7 +340,7 @@ def cmd_page_append(args: argparse.Namespace) -> int:
         plan.add("PATCH", f"/blocks/{page_id}/children", body)
     if not applying(args):
         emit_plan(plan, json_mode=json_mode(args))
-        return 0
+        return
     client = get_client(args)
     run_plan(client, plan)
     if json_mode(args):
@@ -349,7 +350,6 @@ def cmd_page_append(args: argparse.Namespace) -> int:
         )
     else:
         emit_result(f"appended {len(blocks)} blocks to {page_id}", json_mode=False)
-    return 0
 
 
 # --------------------------------------------------------------------------
@@ -358,27 +358,26 @@ def cmd_page_append(args: argparse.Namespace) -> int:
 
 
 def _trash(args: argparse.Namespace, *, in_trash: bool) -> int:
-    page_id = parse_id(args.id, "page id")
+    page_id = parse_id(args.id, _ID_WHAT)
     verb = "archive" if in_trash else "restore"
     plan = Plan(summary=f"{verb} page {page_id}")
     plan.add("PATCH", f"/pages/{page_id}", {"in_trash": in_trash})
     if not applying(args):
         emit_plan(plan, json_mode=json_mode(args))
-        return 0
+        return
     client = get_client(args)
     run_plan(client, plan)
     if json_mode(args):
         emit_result({"id": page_id, "in_trash": in_trash}, json_mode=True)
     else:
         emit_result(f"{verb}d page {page_id}", json_mode=False)
-    return 0
 
 
-def cmd_page_archive(args: argparse.Namespace) -> int:
+def cmd_page_archive(args: argparse.Namespace) -> None:
     return _trash(args, in_trash=True)
 
 
-def cmd_page_restore(args: argparse.Namespace) -> int:
+def cmd_page_restore(args: argparse.Namespace) -> None:
     return _trash(args, in_trash=False)
 
 
@@ -409,7 +408,7 @@ def register(sub: argparse._SubParsersAction) -> None:
     verbs = p.add_subparsers(dest="page_command", parser_class=type(p))
 
     get = verbs.add_parser("get", help="Read a page (properties + body as Markdown).")
-    get.add_argument("id", help="Page id or Notion URL.")
+    get.add_argument("id", help=_ID_HELP)
     get.add_argument("--no-content", action="store_true", help="Skip the page body.")
     get.add_argument("--depth", type=int, default=3, help="Block nesting depth (default 3).")
     get.add_argument("--raw", action="store_true", help="With --json, include the raw API objects.")
@@ -427,7 +426,7 @@ def register(sub: argparse._SubParsersAction) -> None:
     create.set_defaults(func=notion_command(cmd_page_create))
 
     update = verbs.add_parser("update", help="Update a page's title, properties or icon.")
-    update.add_argument("id", help="Page id or Notion URL.")
+    update.add_argument("id", help=_ID_HELP)
     update.add_argument("--title", help="New title.")
     _add_set_flag(update)
     update.add_argument("--icon", help="Emoji icon.")
@@ -436,7 +435,7 @@ def register(sub: argparse._SubParsersAction) -> None:
     update.set_defaults(func=notion_command(cmd_page_update))
 
     append = verbs.add_parser("append", help="Append Markdown content to a page.")
-    append.add_argument("id", help="Page id or Notion URL.")
+    append.add_argument("id", help=_ID_HELP)
     add_body_flags(append, required=True)
     append.add_argument("--after", help="Insert after this block id instead of at the end.")
     add_apply_flag(append)
@@ -444,13 +443,13 @@ def register(sub: argparse._SubParsersAction) -> None:
     append.set_defaults(func=notion_command(cmd_page_append))
 
     archive = verbs.add_parser("archive", help="Move a page to the trash (in_trash = true).")
-    archive.add_argument("id", help="Page id or Notion URL.")
+    archive.add_argument("id", help=_ID_HELP)
     add_apply_flag(archive)
     add_json_flag(archive)
     archive.set_defaults(func=notion_command(cmd_page_archive))
 
     restore = verbs.add_parser("restore", help="Restore a page from the trash (in_trash = false).")
-    restore.add_argument("id", help="Page id or Notion URL.")
+    restore.add_argument("id", help=_ID_HELP)
     add_apply_flag(restore)
     add_json_flag(restore)
     restore.set_defaults(func=notion_command(cmd_page_restore))

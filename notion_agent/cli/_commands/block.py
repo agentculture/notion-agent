@@ -66,16 +66,19 @@ def _count(blocks: list[dict[str, Any]]) -> int:
 # read verbs
 # --------------------------------------------------------------------------
 
+_ID_HELP = "Block id or Notion URL."
+_ID_WHAT = "block id"
+
 
 @notion_command
-def cmd_get(args: argparse.Namespace) -> int:
+def cmd_get(args: argparse.Namespace) -> None:
     client = get_client(args)
-    block_id = parse_id(args.id, "block id")
+    block_id = parse_id(args.id, _ID_WHAT)
     block = client.get_block(block_id)
     as_json = json_mode(args)
     if args.raw:
         _emit_raw(block, json_mode_on=as_json)
-        return 0
+        return
     markdown = blocks_to_markdown([block])
     if as_json:
         emit_result(
@@ -89,7 +92,7 @@ def cmd_get(args: argparse.Namespace) -> int:
             },
             json_mode=True,
         )
-        return 0
+        return
     lines = [
         f"type: {block.get('type', '')}",
         f"id: {block.get('id', '')}",
@@ -99,19 +102,18 @@ def cmd_get(args: argparse.Namespace) -> int:
         markdown,
     ]
     emit_result("\n".join(lines), json_mode=False)
-    return 0
 
 
 @notion_command
-def cmd_children(args: argparse.Namespace) -> int:
+def cmd_children(args: argparse.Namespace) -> None:
     client = get_client(args)
-    block_id = parse_id(args.id, "block id")
+    block_id = parse_id(args.id, _ID_WHAT)
     blocks = client.block_tree(block_id, depth=args.depth)
     markdown = blocks_to_markdown(blocks)
     as_json = json_mode(args)
     if args.raw and not as_json:
         _emit_raw(blocks, json_mode_on=False)
-        return 0
+        return
     if as_json:
         payload: dict[str, Any] = {
             "id": block_id,
@@ -121,9 +123,8 @@ def cmd_children(args: argparse.Namespace) -> int:
         if args.raw:
             payload["raw"] = blocks
         emit_result(payload, json_mode=True)
-        return 0
+        return
     emit_result(markdown, json_mode=False)
-    return 0
 
 
 # --------------------------------------------------------------------------
@@ -132,9 +133,9 @@ def cmd_children(args: argparse.Namespace) -> int:
 
 
 @notion_command
-def cmd_append(args: argparse.Namespace) -> int:
+def cmd_append(args: argparse.Namespace) -> None:
     client = get_client(args)
-    block_id = parse_id(args.id, "block id")
+    block_id = parse_id(args.id, _ID_WHAT)
     markdown = read_body(args)
     if not markdown or not markdown.strip():
         raise CliError(
@@ -144,7 +145,7 @@ def cmd_append(args: argparse.Namespace) -> int:
         )
     blocks = markdown_to_blocks(markdown)
     chunks = chunk_blocks(blocks, BLOCKS_PER_REQUEST)
-    after = parse_id(args.after, "block id") if args.after else None
+    after = parse_id(args.after, _ID_WHAT) if args.after else None
 
     plan = Plan(f"append {len(blocks)} block(s) to {block_id}")
     for index, chunk in enumerate(chunks):
@@ -159,16 +160,15 @@ def cmd_append(args: argparse.Namespace) -> int:
         )
     if not applying(args):
         emit_plan(plan, json_mode=json_mode(args))
-        return 0
+        return
     run_plan(client, plan)
     _emit_done(args, f"appended {len(blocks)} block(s) to {block_id}", block_id)
-    return 0
 
 
 @notion_command
-def cmd_update(args: argparse.Namespace) -> int:
+def cmd_update(args: argparse.Namespace) -> None:
     client = get_client(args)
-    block_id = parse_id(args.id, "block id")
+    block_id = parse_id(args.id, _ID_WHAT)
     block = client.get_block(block_id)
     btype = block.get("type", "")
     payload = block.get(btype) or {}
@@ -183,38 +183,35 @@ def cmd_update(args: argparse.Namespace) -> int:
     plan.add("PATCH", f"/blocks/{block_id}", body)
     if not applying(args):
         emit_plan(plan, json_mode=json_mode(args))
-        return 0
+        return
     run_plan(client, plan)
     _emit_done(args, f"updated block {block_id}", block_id)
-    return 0
 
 
 @notion_command
-def cmd_delete(args: argparse.Namespace) -> int:
+def cmd_delete(args: argparse.Namespace) -> None:
     client = get_client(args)
-    block_id = parse_id(args.id, "block id")
+    block_id = parse_id(args.id, _ID_WHAT)
     plan = Plan(f"move block {block_id} to the trash")
     plan.add("DELETE", f"/blocks/{block_id}", describe="Notion trashes the block; it is reversible")
     if not applying(args):
         emit_plan(plan, json_mode=json_mode(args))
-        return 0
+        return
     run_plan(client, plan)
     _emit_done(args, f"deleted block {block_id} (in trash)", block_id)
-    return 0
 
 
 @notion_command
-def cmd_restore(args: argparse.Namespace) -> int:
+def cmd_restore(args: argparse.Namespace) -> None:
     client = get_client(args)
-    block_id = parse_id(args.id, "block id")
+    block_id = parse_id(args.id, _ID_WHAT)
     plan = Plan(f"restore block {block_id} from the trash")
     plan.add("PATCH", f"/blocks/{block_id}", {"in_trash": False})
     if not applying(args):
         emit_plan(plan, json_mode=json_mode(args))
-        return 0
+        return
     run_plan(client, plan)
     _emit_done(args, f"restored block {block_id}", block_id)
-    return 0
 
 
 def _emit_done(args: argparse.Namespace, message: str, block_id: str) -> None:
@@ -236,7 +233,7 @@ def register(sub: argparse._SubParsersAction) -> None:
     noun = p.add_subparsers(dest="block_command", parser_class=type(p))
 
     get = noun.add_parser("get", help="Show one block.")
-    get.add_argument("id", help="Block id or Notion URL.")
+    get.add_argument("id", help=_ID_HELP)
     add_json_flag(get)
     _add_raw_flag(get)
     get.set_defaults(func=cmd_get)
@@ -259,20 +256,20 @@ def register(sub: argparse._SubParsersAction) -> None:
     append.set_defaults(func=cmd_append)
 
     update = noun.add_parser("update", help="Replace a text block's content.")
-    update.add_argument("id", help="Block id or Notion URL.")
+    update.add_argument("id", help=_ID_HELP)
     update.add_argument("--text", required=True, help="Replacement Markdown (one line).")
     add_apply_flag(update)
     add_json_flag(update)
     update.set_defaults(func=cmd_update)
 
     delete = noun.add_parser("delete", help="Move a block to the trash.")
-    delete.add_argument("id", help="Block id or Notion URL.")
+    delete.add_argument("id", help=_ID_HELP)
     add_apply_flag(delete)
     add_json_flag(delete)
     delete.set_defaults(func=cmd_delete)
 
     restore = noun.add_parser("restore", help="Restore a block from the trash.")
-    restore.add_argument("id", help="Block id or Notion URL.")
+    restore.add_argument("id", help=_ID_HELP)
     add_apply_flag(restore)
     add_json_flag(restore)
     restore.set_defaults(func=cmd_restore)

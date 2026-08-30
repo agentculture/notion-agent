@@ -38,7 +38,7 @@ def _summarise(item: dict) -> dict:
     }
 
 
-def cmd_search(args: argparse.Namespace) -> int:
+def cmd_search(args: argparse.Namespace) -> None:
     kind = None
     if getattr(args, "pages", False):
         kind = "page"
@@ -51,16 +51,15 @@ def cmd_search(args: argparse.Namespace) -> int:
     if json_mode(args):
         payload = results if getattr(args, "raw", False) else [_summarise(r) for r in results]
         emit_result(payload, json_mode=True)
-        return 0
+        return
 
     if not results:
-        return 0
+        return
     lines = []
     for item in results:
         row = _summarise(item)
         lines.append(f"{row['object']}\t{row['id']}\t{row['title']}\t{row['url']}")
     emit_result("\n".join(lines), json_mode=False)
-    return 0
 
 
 def register(sub: argparse._SubParsersAction) -> None:

@@ -188,17 +188,21 @@ def _scalar(value: Any) -> str:
 # db get
 # --------------------------------------------------------------------------
 
+_ID_HELP = "Data source id, database id, or Notion URL."
+_ID_WHAT = "data source or database id"
+_SET_METAVAR = "PROP=VALUE"
+
 
 @notion_command
-def cmd_get(args: argparse.Namespace) -> int:
+def cmd_get(args: argparse.Namespace) -> None:
     client = get_client(args)
-    source = resolve_data_source(client, parse_id(args.id, "data source or database id"))
+    source = resolve_data_source(client, parse_id(args.id, _ID_WHAT))
     schema = source.get("properties") or {}
     summary = props.schema_summary(schema)
     as_json = json_mode(args)
     if args.raw and not as_json:
         _emit_raw(source, json_mode_on=False)
-        return 0
+        return
     parent = source.get("parent") or {}
     payload = {
         "id": source.get("id"),
@@ -211,7 +215,7 @@ def cmd_get(args: argparse.Namespace) -> int:
         if args.raw:
             payload["raw"] = source
         emit_result(payload, json_mode=True)
-        return 0
+        return
     lines = [f"# {payload['title']}", f"id: {payload['id']}"]
     if payload["database_id"]:
         lines.append(f"database_id: {payload['database_id']}")
@@ -226,7 +230,6 @@ def cmd_get(args: argparse.Namespace) -> int:
             line += "  [read-only]"
         lines.append(line)
     emit_result("\n".join(lines), json_mode=False)
-    return 0
 
 
 # --------------------------------------------------------------------------
@@ -235,9 +238,9 @@ def cmd_get(args: argparse.Namespace) -> int:
 
 
 @notion_command
-def cmd_query(args: argparse.Namespace) -> int:
+def cmd_query(args: argparse.Namespace) -> None:
     client = get_client(args)
-    source = resolve_data_source(client, parse_id(args.id, "data source or database id"))
+    source = resolve_data_source(client, parse_id(args.id, _ID_WHAT))
     schema = source.get("properties") or {}
     wheres = args.where or []
     explicit = _explicit_filter(args)
@@ -255,7 +258,7 @@ def cmd_query(args: argparse.Namespace) -> int:
     as_json = json_mode(args)
     if args.raw:
         _emit_raw(rows, json_mode_on=as_json)
-        return 0
+        return
     if as_json:
         emit_result(
             [
@@ -269,11 +272,10 @@ def cmd_query(args: argparse.Namespace) -> int:
             ],
             json_mode=True,
         )
-        return 0
+        return
     if not rows:
-        return 0
+        return
     emit_result("\n".join(_row_line(row) for row in rows), json_mode=False)
-    return 0
 
 
 # --------------------------------------------------------------------------
@@ -282,7 +284,7 @@ def cmd_query(args: argparse.Namespace) -> int:
 
 
 @notion_command
-def cmd_create(args: argparse.Namespace) -> int:
+def cmd_create(args: argparse.Namespace) -> None:
     """``db create`` — a new database (with one data source) under a page."""
     parent_id = parse_id(args.parent, "parent page id")
     schema = props.build_schema(args.prop or [])
@@ -297,7 +299,7 @@ def cmd_create(args: argparse.Namespace) -> int:
     plan.add("POST", "/databases", body, describe="create the database + its data source")
     if not applying(args):
         emit_plan(plan, json_mode=json_mode(args))
-        return 0
+        return
     client = get_client(args)
     created = client.request("POST", "/databases", body=body)
     sources = created.get("data_sources") or []
@@ -319,13 +321,12 @@ def cmd_create(args: argparse.Namespace) -> int:
             f"{created.get('url', '')}",
             json_mode=False,
         )
-    return 0
 
 
 @notion_command
-def cmd_row_create(args: argparse.Namespace) -> int:
+def cmd_row_create(args: argparse.Namespace) -> None:
     client = get_client(args)
-    source = resolve_data_source(client, parse_id(args.id, "data source or database id"))
+    source = resolve_data_source(client, parse_id(args.id, _ID_WHAT))
     schema = source.get("properties") or {}
     payload = props.build_properties(schema, args.set or [])
     if args.title is not None:
@@ -352,7 +353,7 @@ def cmd_row_create(args: argparse.Namespace) -> int:
         )
     if not applying(args):
         emit_plan(plan, json_mode=json_mode(args))
-        return 0
+        return
 
     created = client.request("POST", "/pages", body=body)
     page_id = created.get("id", "")
@@ -370,11 +371,10 @@ def cmd_row_create(args: argparse.Namespace) -> int:
         emit_result({"id": page_id, "url": created.get("url")}, json_mode=True)
     else:
         emit_result(f"created row {page_id}\n{created.get('url', '')}", json_mode=False)
-    return 0
 
 
 @notion_command
-def cmd_row_update(args: argparse.Namespace) -> int:
+def cmd_row_update(args: argparse.Namespace) -> None:
     client = get_client(args)
     page_id = parse_id(args.id, "page id")
     page = client.get_page(page_id)
@@ -401,13 +401,12 @@ def cmd_row_update(args: argparse.Namespace) -> int:
     plan.add("PATCH", f"/pages/{page_id}", {"properties": payload})
     if not applying(args):
         emit_plan(plan, json_mode=json_mode(args))
-        return 0
+        return
     updated = client.request("PATCH", f"/pages/{page_id}", body={"properties": payload})
     if json_mode(args):
         emit_result({"id": updated.get("id", page_id), "url": updated.get("url")}, json_mode=True)
     else:
         emit_result(f"updated row {page_id}", json_mode=False)
-    return 0
 
 
 # --------------------------------------------------------------------------
@@ -422,17 +421,17 @@ def register(sub: argparse._SubParsersAction) -> None:
     noun = p.add_subparsers(dest="db_command", parser_class=type(p))
 
     get = noun.add_parser("get", help="Show a data source's schema.")
-    get.add_argument("id", help="Data source id, database id, or Notion URL.")
+    get.add_argument("id", help=_ID_HELP)
     add_json_flag(get)
     _add_raw_flag(get)
     get.set_defaults(func=cmd_get)
 
     query = noun.add_parser("query", help="Query rows of a data source.")
-    query.add_argument("id", help="Data source id, database id, or Notion URL.")
+    query.add_argument("id", help=_ID_HELP)
     query.add_argument(
         "--where",
         action="append",
-        metavar="PROP=VALUE",
+        metavar=_SET_METAVAR,
         help="Schema-typed filter clause; repeatable (clauses are ANDed).",
     )
     query.add_argument("--filter", help="Raw Notion filter JSON (excludes --where).")
@@ -471,12 +470,12 @@ def register(sub: argparse._SubParsersAction) -> None:
     row_sub = row.add_subparsers(dest="db_row_command", parser_class=type(p))
 
     create = row_sub.add_parser("create", help="Create a row.")
-    create.add_argument("id", help="Data source id, database id, or Notion URL.")
+    create.add_argument("id", help=_ID_HELP)
     create.add_argument("--title", help="Value for the data source's title property.")
     create.add_argument(
         "--set",
         action="append",
-        metavar="PROP=VALUE",
+        metavar=_SET_METAVAR,
         help="Set a property; repeatable.",
     )
     add_body_flags(create)
@@ -490,7 +489,7 @@ def register(sub: argparse._SubParsersAction) -> None:
     update.add_argument(
         "--set",
         action="append",
-        metavar="PROP=VALUE",
+        metavar=_SET_METAVAR,
         help="Set a property; repeatable.",
     )
     add_apply_flag(update)
