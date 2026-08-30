@@ -18,6 +18,7 @@ from notion_agent.cli._commands.whoami import report
 from notion_agent.cli._output import emit_result
 
 _ARTIFACTS = [
+    "notion_agent/notion/ — zero-dependency Notion client, Markdown⇄blocks, property values",
     "culture.yaml + AGENTS.colleague.md — mesh identity (suffix + backend)",
     ".claude/skills/ — the canonical guildmaster skill kit (cite-don't-import)",
     "docs/skill-sources.md — skill provenance ledger",
@@ -25,7 +26,12 @@ _ARTIFACTS = [
 ]
 
 _VERBS = [
-    "whoami — identity probe (nick, version, backend, model)",
+    "whoami — identity probe (nick, version, backend, model) + Notion auth probe",
+    "search [query] — find pages and data sources",
+    "page get|create|update|append|archive|restore — pages as Markdown",
+    "db get|query|row create|row update — data sources and rows",
+    "block get|children|append|update|delete|restore — individual blocks",
+    "comment list|add — page comments",
     "learn — structured self-teaching prompt",
     "explain <path> — markdown docs for a topic",
     "overview — this descriptive snapshot",
@@ -62,6 +68,8 @@ def cli_sections() -> list[dict[str, object]]:
             "title": "Conventions",
             "items": [
                 "every command supports --json",
+                "every write verb is dry-run by default; --apply performs it",
+                "ids accept dashed/32-hex ids or notion.so / app.notion.com URLs",
                 "results to stdout, errors/diagnostics to stderr (never mixed)",
                 "exit codes: 0 success, 1 user error, 2 environment error, 3+ reserved",
             ],

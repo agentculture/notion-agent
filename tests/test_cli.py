@@ -163,3 +163,15 @@ def test_no_orphan_catalog_entries() -> None:
     assert not orphans, "catalog entr(ies) for unregistered command(s): " + ", ".join(
         " ".join(p) for p in sorted(orphans)
     )
+
+
+def test_every_top_level_noun_is_named_in_learn(capsys: pytest.CaptureFixture[str]) -> None:
+    """`learn` is hand-written text — this keeps it honest as nouns are added."""
+    nouns = {path[0] for path in _registered_paths(_build_parser()) if len(path) == 1}
+    assert main(["learn"]) == 0
+    out = capsys.readouterr().out
+    missing = sorted(n for n in nouns if f"notion-agent {n}" not in out)
+    assert not missing, f"learn output does not mention: {missing}"
+    assert main(["learn", "--json"]) == 0
+    listed = {c["path"][0] for c in json.loads(capsys.readouterr().out)["commands"]}
+    assert nouns <= listed

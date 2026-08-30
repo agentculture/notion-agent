@@ -58,8 +58,8 @@ def run(argv: list[str]) -> int:
 def with_client(monkeypatch: pytest.MonkeyPatch, transport: FakeNotion) -> FakeNotion:
     """Install ``transport`` as the CLI's client.
 
-    Routes match in insertion order, so an override must be registered *before*
-    ``standard()`` fills in the defaults.
+    A later ``.on()`` for the same method+path replaces the earlier route, so
+    overrides go *after* ``standard()``.
     """
     monkeypatch.setattr(
         _common,
@@ -99,12 +99,12 @@ def test_db_get_on_a_multi_source_database_lists_the_choices(monkeypatch, capsys
     with_client(
         monkeypatch,
         FakeNotion()
+        .standard()
         .on(
             "GET",
             f"/databases/{DATABASE_ID}",
             database(data_sources=[{"id": "a" * 32, "name": "A"}, {"id": "b" * 32, "name": "B"}]),
-        )
-        .standard(),
+        ),
     )
     assert run(["db", "get", DATABASE_ID]) == 1
     err = capsys.readouterr().err
@@ -251,7 +251,7 @@ def test_db_row_update_refuses_a_non_row_page(fake, capsys) -> None:
 
 def test_db_row_update_patches_only_the_given_properties(monkeypatch, capsys) -> None:
     transport = with_client(
-        monkeypatch, FakeNotion().on("GET", f"/pages/{PAGE_ID}", row_page()).standard()
+        monkeypatch, FakeNotion().standard().on("GET", f"/pages/{PAGE_ID}", row_page())
     )
     assert run(["db", "row", "update", PAGE_ID, "--set", "Status=Done", "--apply"]) == 0
     mutations = transport.mutations()
@@ -320,7 +320,7 @@ def test_block_update_refuses_a_divider(monkeypatch, capsys) -> None:
     divider.pop("paragraph")
     divider["divider"] = {}
     transport = with_client(
-        monkeypatch, FakeNotion().on("GET", f"/blocks/{BLOCK_ID}", divider).standard()
+        monkeypatch, FakeNotion().standard().on("GET", f"/blocks/{BLOCK_ID}", divider)
     )
     assert run(["block", "update", BLOCK_ID, "--text", "hi", "--apply"]) == 1
     err = capsys.readouterr().err
@@ -369,7 +369,7 @@ def test_comment_list_renders_author_and_text(monkeypatch, capsys) -> None:
         "created_by": {"object": "user", "id": "u-1", "name": "Ori"},
         "rich_text": rt("hi"),
     }
-    with_client(monkeypatch, FakeNotion().on("GET", "/comments", listing([one])).standard())
+    with_client(monkeypatch, FakeNotion().standard().on("GET", "/comments", listing([one])))
     assert run(["comment", "list", PAGE_ID]) == 0
     line = capsys.readouterr().out.strip()
     assert "Ori" in line and "hi" in line and "2026-08-30" in line
@@ -432,7 +432,7 @@ def test_parse_errors_use_the_structured_contract(fake, capsys, argv) -> None:
 def test_failures_name_sharing_and_request_id_but_never_the_token(monkeypatch, capsys) -> None:
     with_client(
         monkeypatch,
-        FakeNotion().on("GET", f"/blocks/{BLOCK_ID}", not_found("block", BLOCK_ID)).standard(),
+        FakeNotion().standard().on("GET", f"/blocks/{BLOCK_ID}", not_found("block", BLOCK_ID)),
     )
     assert run(["block", "get", BLOCK_ID]) == 1
     out = capsys.readouterr()

@@ -199,6 +199,10 @@ class FakeNotion:
             # Deep-copy per call: the client mutates fetched blocks (attaches
             # children), and a shared fixture would leak between requests.
             handler = lambda _req: copy.deepcopy(fixed)  # noqa: E731
+        key = (method.upper(), pattern.pattern)
+        # A later registration for the same (method, path) replaces the
+        # earlier one, so `.standard().on(...)` overrides work as expected.
+        self.routes = [r for r in self.routes if (r[0], r[1].pattern) != key]
         self.routes.append((method.upper(), pattern, handler))
         return self
 
