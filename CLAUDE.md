@@ -9,17 +9,14 @@ databases, blocks, and search — and a **communication lane**: other AgentCultu
 agents use their own CLIs and skills to talk to each other through shared Notion
 pages and databases.
 
-**Status: the Notion surface is not built yet.** What is on disk today is the
-scaffold this agent was minted from — `culture-agent-template` (commit
-`a55034c`, "scaffold notion-agent from culture-agent-template"), renamed. The
-CLI ships the six agent-first introspection verbs the template carries
-(`whoami`, `learn`, `explain`, `overview`, `doctor`, `cli overview`) and
-**nothing that touches Notion**: no API client, no auth, no `page` / `database` /
-`block` / `search` nouns, and `dependencies = []` in `pyproject.toml`. The
-`explain` catalog and the `learn` text still describe the agent as "a clonable
-template for AgentCulture mesh agents", because that is what the code currently
-is. Treat the Notion capability as the **roadmap**, and don't write docs or
-catalog entries that claim it works before the code lands.
+**Status: surface 1 (the control CLI) is built; surface 2 (the lane) is not.**
+`whoami` is the auth probe, and `search`, `page`, `db`, `block`, `comment` are
+real noun groups under `cli/_commands/` on top of a zero-dependency client in
+`notion_agent/notion/`. The communication lane (schema, `lane init`,
+send/receive, the vendorable skill) is the roadmap — see `## Roadmap` and the
+follow-up issue linked from issue #1. Design decisions and their reasoning are
+in `docs/decisions.md`; the devague spec and plan that produced this surface
+are in `docs/specs/` and `docs/plans/`.
 
 It is a sibling to [`guildmaster`](https://github.com/agentculture/guildmaster)
 (the **skills supplier**), [`steward`](https://github.com/agentculture/steward)
@@ -54,10 +51,9 @@ wraps the pytest invocation; `sonarclaude` queries the SonarCloud project
 ## The CLI
 
 The CLI is cited (cite-don't-import) from teken's `python-cli` reference
-(`teken cli cite`), so the **runtime package has no third-party dependencies** —
-`teken` is a dev dependency only. Adding a Notion client will be the first entry
-in `dependencies`; that is a deliberate departure from the scaffold's zero-dep
-posture, not an oversight to fix silently.
+(`teken cli cite`), and the **runtime package has no third-party dependencies** —
+the Notion client is `urllib` (`notion_agent/notion/client.py`), a deliberate
+choice so a mesh install stays weightless; `teken` is a dev dependency only.
 
 Two console scripts point at the same entry point: **`notion`** (short, primary)
 and **`notion-agent`** (matches the argparse `prog`, the `explain` catalog, the
@@ -114,7 +110,41 @@ this agent's own, and a wheel install finds nothing and falls back to literal
 defaults), and `read_agent_fields()` parses `culture.yaml` **without a YAML
 dependency** to keep `dependencies = []` true. It handles the documented
 `suffix`/`backend`/`model` shape only and falls back to defaults on anything
-fancier. `doctor.py` builds on both.
+fancier. `doctor.py` builds on both. `whoami` is also the **Notion auth probe**:
+after the identity block it calls `GET /users/me` and reports workspace,
+integration, token source and API version; with no token it exits `2`.
+
+### The Notion surface
+
+- **`notion_agent/notion/`** is the client layer, shared by every noun:
+  `client.py` (auth from `NOTION_API_KEY` → `NOTION_TOKEN`, injectable;
+  `Notion-Version: 2026-03-11`; ~3 req/s throttle; `429` retried for any
+  method, `5xx` only for `GET`; `paginate()`; `NotionError` with `request_id`),
+  `ids.py` (ids/URLs → dashed UUID), `markdown.py` (**Markdown ⇄ blocks as pure
+  functions** — verbs never build block JSON by hand; `tests/test_markdown.py`
+  holds the round-trip guard), `props.py` (flatten property values for reading,
+  build typed payloads from `Name=value` for writing).
+- **`cli/_commands/_common.py`** is what a noun module uses: `get_client()`,
+  `notion_command` (wraps a handler so `NotionError`/`ValueError` become
+  `CliError`), `to_cli_error` (the one place Notion errors are mapped — `404
+  object_not_found` becomes *"not shared with the integration NAME"*,
+  `401` is exit `2`), and the **dry-run contract**: a write verb builds a
+  `Plan` of `method/path/body` steps and either `emit_plan`s it (default,
+  exit `0`, nothing sent) or `run_plan`s it under `--apply`. Plans never
+  include headers, so the token cannot leak into output. Tests inject a fake
+  transport by monkeypatching `_common.build_client`
+  (`tests/fake_notion.py` — note `.on()` replaces an existing route, so
+  `.standard().on(...)` overrides).
+- **API version semantics you must keep:** databases expose `data_sources[]`
+  and are queried via `POST /data_sources/{id}/query` (`db` verbs take either
+  id and resolve through `_common.resolve_data_source`); trash is `in_trash`
+  (never `archived`); append positioning is `position.after_block` (never
+  `after`); search filters are `page` / `data_source`.
+
+**Every code file stays under 1000 lines** — source, tests, workflows, configs,
+and the vendored skill scripts alike. `tests/test_file_lengths.py` walks
+`git ls-files` and fails the suite for any code file over the limit; a vendored
+script that outgrows it is a finding to raise upstream, not to trim here.
 
 Descriptive verbs must never hard-fail on a bad path — `overview` takes an
 optional `target` positional that it accepts and ignores, so `overview
@@ -258,21 +288,29 @@ notion_agent/             agent-first CLI (cited from teken's python-cli referen
   cli/__init__.py         parser, register() wiring, _dispatch exception->exit-code
   cli/_errors.py          CliError + exit-code policy      (stable-contract)
   cli/_output.py          stdout/stderr split, JSON mode    (stable-contract)
-  cli/_commands/          one module per verb, each with register(sub)
+  cli/_commands/          one module per noun/verb, each with register(sub)
+    _common.py            get_client, NotionError->CliError, the dry-run Plan contract
+    search.py page.py db.py block.py comment.py   the Notion nouns
+    whoami.py             identity + Notion auth probe
+  notion/                 zero-dep client layer: client, ids, markdown, props
   explain/catalog.py      markdown keyed by command-path tuple (stable-contract)
-tests/                    pytest smoke + introspection tests
+tests/                    pytest; fake_notion.py is the recorded-shape fake transport
+docs/decisions.md         issue #1's parked unknowns, decided with reasoning
+docs/specs/ docs/plans/   the devague frame + plan that produced surface 1
 .claude/skills/           vendored guildmaster skill kit (cite-don't-import)
 docs/skill-sources.md     skill provenance ledger
 culture.yaml              mesh identity (suffix + backend)
 .github/workflows/        tests + lint + version-check; PyPI Trusted Publishing
 ```
 
-## Roadmap — the Notion surface
+## Roadmap — surface 2, the communication lane
 
-Not built. When it lands, expect it to arrive as noun groups under
-`cli/_commands/` (`page`, `database`, `block`, `search`) following the
-`register(sub)` pattern, each with a matching `explain` catalog entry, `--json`
-on every verb, `CliError` for every failure, and a real dependency in
-`pyproject.toml` for the Notion client plus a token-from-environment auth story.
-Until then, `learn` / `explain` / `overview` describe a template, and that is
-accurate.
+Not built. Expect a versioned lane schema (a Notion database whose properties
+are the message contract), `notion lane init` to provision it (dry-run by
+default), send / receive / mark-handled verbs usable from another agent's
+shell (polling with a cursor or status filter — Notion has no push), and a
+vendorable `.claude/skills/<name>/` skill that shells out to `notion`. It
+builds on the contracts shipped in surface 1 — ids, Markdown bodies, dry-run
+writes, data-source addressing — rather than re-deciding them. `block update`
+is last-writer-wins, so the lane must not rely on in-place edits for state
+that several agents write.

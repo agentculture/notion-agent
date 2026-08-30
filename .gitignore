@@ -228,3 +228,9 @@ __marimo__/
 
 # Per-machine skills config (copy from skills.local.yaml.example)
 skills.local.yaml
+
+# devague frame state (local agent-tooling state)
+.devague/
+
+# devague working state (not committed by default)
+.devague/reviews/

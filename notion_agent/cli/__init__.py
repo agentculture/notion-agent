@@ -2,8 +2,9 @@
 
 The agent-first global verbs (``whoami``, ``learn``, ``explain``, ``overview``,
 ``doctor``) are registered here under :mod:`notion_agent.cli._commands`,
-alongside the ``cli`` noun group. Future noun groups register via their own
-``register()`` functions following the same pattern.
+alongside the ``cli`` noun group and the Notion nouns (``search``, ``page``,
+``db``, ``block``, ``comment``). A new noun group is a module with a
+``register(sub)`` function plus one line in :func:`_build_parser`.
 
 Error propagation contract
 --------------------------
@@ -62,16 +63,22 @@ def _argv_has_json(argv: list[str] | None) -> bool:
 
 
 def _build_parser() -> argparse.ArgumentParser:
+    from notion_agent.cli._commands import block as _block_group
     from notion_agent.cli._commands import cli as _cli_group
+    from notion_agent.cli._commands import comment as _comment_group
+    from notion_agent.cli._commands import db as _db_group
     from notion_agent.cli._commands import doctor as _doctor_cmd
     from notion_agent.cli._commands import explain as _explain_cmd
     from notion_agent.cli._commands import learn as _learn_cmd
     from notion_agent.cli._commands import overview as _overview_cmd
+    from notion_agent.cli._commands import page as _page_group
+    from notion_agent.cli._commands import search as _search_cmd
     from notion_agent.cli._commands import whoami as _whoami_cmd
 
     parser = _CliArgumentParser(
         prog="notion-agent",
-        description="notion-agent — a clonable template for AgentCulture mesh agents.",
+        description="notion-agent — agent-first CLI for controlling Notion "
+        "(pages, databases, blocks, comments, search). Writes are dry-run unless --apply.",
     )
     parser.add_argument(
         "--version",
@@ -88,9 +95,12 @@ def _build_parser() -> argparse.ArgumentParser:
     _overview_cmd.register(sub)
     _doctor_cmd.register(sub)
     _cli_group.register(sub)
-    # Register your own noun groups here:
-    #   from notion_agent.cli._commands import my_noun as _my_noun_group
-    #   _my_noun_group.register(sub)
+    # The Notion surface — one module per noun, each with register(sub).
+    _search_cmd.register(sub)
+    _page_group.register(sub)
+    _db_group.register(sub)
+    _block_group.register(sub)
+    _comment_group.register(sub)
 
     return parser
 
