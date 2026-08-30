@@ -18,6 +18,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **1000-line ceiling on every code file** (`tests/test_file_lengths.py`), covering source, tests, workflows, configs and vendored skill scripts.
 - `README.md`, `CLAUDE.md`, `learn`, `overview` and the `explain` root entry now describe the shipped Notion surface (including the lane-split table and the Notion trademark note) instead of the template scaffold; surface 2 (the communication lane) moved under Roadmap.
 - `.gitignore` ignores `.devague/` (local frame state) alongside `.devex/` / `.teken/`.
 

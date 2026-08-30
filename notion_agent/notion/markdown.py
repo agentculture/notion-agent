@@ -33,6 +33,7 @@ long runs are chunked (:func:`text_chunks`).
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from typing import Any
 
 RICH_TEXT_LIMIT = 2000
@@ -40,19 +41,7 @@ BLOCKS_PER_REQUEST = 100
 
 _HEADING_TYPES = {"heading_1": 1, "heading_2": 2, "heading_3": 3}
 _LIST_TYPES = ("bulleted_list_item", "numbered_list_item", "to_do")
-_TEXT_TYPES = (
-    "paragraph",
-    "heading_1",
-    "heading_2",
-    "heading_3",
-    "bulleted_list_item",
-    "numbered_list_item",
-    "to_do",
-    "quote",
-    "callout",
-    "toggle",
-    "code",
-)
+_DASH_LISTS = {"bulleted_list_item", "to_do"}
 
 # --------------------------------------------------------------------------
 # rich text
@@ -86,17 +75,16 @@ def rich_text(
     code: bool = False,
 ) -> list[dict[str, Any]]:
     """Build rich-text objects for ``text`` (chunked to the API limit)."""
-    spans = []
-    for chunk in text_chunks(text):
-        obj: dict[str, Any] = {
+    return [
+        {
             "type": "text",
             "text": {"content": chunk, "link": {"url": link} if link else None},
             "annotations": _annotations(
                 bold=bold, italic=italic, strikethrough=strikethrough, code=code
             ),
         }
-        spans.append(obj)
-    return spans
+        for chunk in text_chunks(text)
+    ]
 
 
 def plain_text(spans: list[dict[str, Any]] | None) -> str:
@@ -111,34 +99,48 @@ def _span_text(span: dict[str, Any]) -> str:
     return ""
 
 
+def _wrap_marks(text: str, ann: dict[str, Any]) -> str:
+    """Apply inline marks in the canonical order (code innermost, strike outermost)."""
+    if ann.get("code"):
+        text = f"`{text}`"
+    if ann.get("bold") and ann.get("italic"):
+        text = f"***{text}***"
+    elif ann.get("bold"):
+        text = f"**{text}**"
+    elif ann.get("italic"):
+        text = f"*{text}*"
+    if ann.get("strikethrough"):
+        text = f"~~{text}~~"
+    return text
+
+
+def _span_href(span: dict[str, Any]) -> str | None:
+    """A link target for plain text spans (mentions keep their own href untouched)."""
+    if span.get("type") not in (None, "text"):
+        return None
+    link = (span.get("text") or {}).get("link") or {}
+    return link.get("url") or span.get("href")
+
+
 def rich_text_to_markdown(spans: list[dict[str, Any]] | None) -> str:
     out = []
     for span in spans or []:
         text = _span_text(span)
         if not text:
             continue
-        ann = span.get("annotations", {})
-        if ann.get("code"):
-            text = f"`{text}`"
-        if ann.get("bold") and ann.get("italic"):
-            text = f"***{text}***"
-        elif ann.get("bold"):
-            text = f"**{text}**"
-        elif ann.get("italic"):
-            text = f"*{text}*"
-        if ann.get("strikethrough"):
-            text = f"~~{text}~~"
-        href = span.get("href")
-        if span.get("type") == "text":
-            link = (span.get("text") or {}).get("link") or {}
-            href = link.get("url") or href
-        if href and span.get("type") in (None, "text"):
-            text = f"[{text}]({href})"
-        out.append(text)
+        text = _wrap_marks(text, span.get("annotations", {}))
+        href = _span_href(span)
+        out.append(f"[{text}]({href})" if href else text)
     return "".join(out)
 
 
 _INLINE_MARKERS = ("***", "**", "*", "~~", "`")
+_MARKER_FLAGS: dict[str, dict[str, bool]] = {
+    "***": {"bold": True, "italic": True},
+    "**": {"bold": True},
+    "*": {"italic": True},
+    "~~": {"strikethrough": True},
+}
 
 
 def markdown_to_rich_text(text: str) -> list[dict[str, Any]]:
@@ -146,60 +148,62 @@ def markdown_to_rich_text(text: str) -> list[dict[str, Any]]:
     return _parse_inline(text, {})
 
 
+def _match_link(text: str, i: int) -> tuple[str, str, int] | None:
+    """``[label](url)`` at ``i`` → (label, url, end index), else ``None``."""
+    if text[i] != "[":
+        return None
+    close = text.find("](", i + 1)
+    if close == -1:
+        return None
+    end = text.find(")", close + 2)
+    if end == -1:
+        return None
+    return text[i + 1 : close], text[close + 2 : end], end + 1
+
+
+def _match_marker(text: str, i: int) -> tuple[str, str, int] | None:
+    """An inline mark opening at ``i`` → (marker, inner text, end index), else ``None``."""
+    for marker in _INLINE_MARKERS:
+        if not text.startswith(marker, i):
+            continue
+        close = text.find(marker, i + len(marker))
+        if close == -1 or close == i + len(marker):
+            continue
+        inner = text[i + len(marker) : close]
+        # Emphasis needs flanking non-space (`2 * 3 * 4` is arithmetic, not
+        # italics); code spans are taken verbatim.
+        if marker != "`" and (inner[0].isspace() or inner[-1].isspace()):
+            continue
+        return marker, inner, close + len(marker)
+    return None
+
+
 def _parse_inline(text: str, state: dict[str, Any]) -> list[dict[str, Any]]:
     spans: list[dict[str, Any]] = []
     buf = ""
     i = 0
-    n = len(text)
-
-    def flush() -> None:
-        nonlocal buf
-        if buf:
-            spans.extend(rich_text(buf, **state))
+    while i < len(text):
+        link = _match_link(text, i)
+        if link:
+            label, url, i = link
+            spans.extend(rich_text(buf, **state) if buf else [])
             buf = ""
-
-    while i < n:
-        # links: [text](url)
-        if text[i] == "[":
-            close = text.find("](", i + 1)
-            if close != -1:
-                end = text.find(")", close + 2)
-                if end != -1:
-                    inner, url = text[i + 1 : close], text[close + 2 : end]
-                    flush()
-                    spans.extend(_parse_inline(inner, {**state, "link": url}))
-                    i = end + 1
-                    continue
-        matched = False
-        for marker in _INLINE_MARKERS:
-            if text.startswith(marker, i):
-                close = text.find(marker, i + len(marker))
-                if close == -1 or close == i + len(marker):
-                    continue
-                inner = text[i + len(marker) : close]
-                # Emphasis needs flanking non-space (`2 * 3 * 4` is arithmetic,
-                # not italics); code spans are taken verbatim.
-                if marker != "`" and (inner[0].isspace() or inner[-1].isspace()):
-                    continue
-                flush()
-                if marker == "`":
-                    spans.extend(rich_text(inner, **{**state, "code": True}))
-                else:
-                    flag = {
-                        "***": {"bold": True, "italic": True},
-                        "**": {"bold": True},
-                        "*": {"italic": True},
-                        "~~": {"strikethrough": True},
-                    }[marker]
-                    spans.extend(_parse_inline(inner, {**state, **flag}))
-                i = close + len(marker)
-                matched = True
-                break
-        if matched:
+            spans.extend(_parse_inline(label, {**state, "link": url}))
+            continue
+        mark = _match_marker(text, i)
+        if mark:
+            marker, inner, i = mark
+            spans.extend(rich_text(buf, **state) if buf else [])
+            buf = ""
+            if marker == "`":
+                spans.extend(rich_text(inner, **{**state, "code": True}))
+            else:
+                spans.extend(_parse_inline(inner, {**state, **_MARKER_FLAGS[marker]}))
             continue
         buf += text[i]
         i += 1
-    flush()
+    if buf:
+        spans.extend(rich_text(buf, **state))
     return spans
 
 
@@ -211,7 +215,16 @@ def _parse_inline(text: str, state: dict[str, Any]) -> list[dict[str, Any]]:
 def block_text(block: dict[str, Any]) -> str:
     """Plain text of a block's own rich text (no children)."""
     payload = block.get(block.get("type", ""), {}) or {}
-    return plain_text(payload.get("rich_text") or payload.get("title") and [] or [])
+    return plain_text(payload.get("rich_text"))
+
+
+def _same_list_run(prev: str | None, current: str) -> bool:
+    """Adjacent list items render without a blank line when Markdown treats them as one list."""
+    if prev is None:
+        return False
+    if current == "numbered_list_item":
+        return prev == "numbered_list_item"
+    return current in _DASH_LISTS and prev in _DASH_LISTS
 
 
 def blocks_to_markdown(blocks: list[dict[str, Any]], *, indent: int = 0) -> str:
@@ -225,100 +238,38 @@ def blocks_to_markdown(blocks: list[dict[str, Any]], *, indent: int = 0) -> str:
         chunk = _render_block(block, indent=indent, number=number)
         if chunk is None:
             continue
-        separator_free = _same_list_run(prev_type, btype)
-        if lines and not separator_free:
+        if lines and not _same_list_run(prev_type, btype):
             lines.append("")
         lines.append(chunk)
         prev_type = btype
     return "\n".join(lines).rstrip("\n")
 
 
-_DASH_LISTS = {"bulleted_list_item", "to_do"}
+class _Ctx:
+    """What a block renderer needs: the block, its indent, its list number."""
 
+    def __init__(self, block: dict[str, Any], indent: int, number: int) -> None:
+        self.block = block
+        self.btype = block.get("type", "")
+        self.payload: dict[str, Any] = block.get(self.btype, {}) or {}
+        self.indent = indent
+        self.pad = "  " * indent
+        self.number = number
+        self.text = rich_text_to_markdown(self.payload.get("rich_text"))
+        # Fetched trees carry children on the block; outbound payloads (what
+        # markdown_to_blocks builds) carry them inside the typed payload.
+        self.children: list[dict[str, Any]] = (
+            block.get("children") or self.payload.get("children") or []
+        )
 
-def _same_list_run(prev: str | None, current: str) -> bool:
-    """Adjacent list items render without a blank line when Markdown treats them as one list."""
-    if prev is None:
-        return False
-    if current == "numbered_list_item":
-        return prev == "numbered_list_item"
-    return current in _DASH_LISTS and prev in _DASH_LISTS
-
-
-def _render_block(block: dict[str, Any], *, indent: int, number: int) -> str | None:
-    btype = block.get("type", "")
-    payload = block.get(btype, {}) or {}
-    pad = "  " * indent
-    text = rich_text_to_markdown(payload.get("rich_text"))
-    # Fetched trees carry children on the block; outbound payloads (what
-    # markdown_to_blocks builds) carry them inside the typed payload.
-    children = block.get("children") or payload.get("children") or []
-
-    def with_children(head: str, child_indent: int = indent + 1, sep: str = "\n") -> str:
-        if not children:
+    def with_children(self, head: str, *, nested: bool = True, sep: str = "\n") -> str:
+        if not self.children:
             return head
-        return head + sep + blocks_to_markdown(children, indent=child_indent)
+        child_indent = self.indent + 1 if nested else self.indent
+        return head + sep + blocks_to_markdown(self.children, indent=child_indent)
 
-    if btype in _HEADING_TYPES:
-        return with_children(f"{pad}{'#' * _HEADING_TYPES[btype]} {text}", indent, "\n\n")
-    if btype == "paragraph":
-        body = text.replace("\n", "\n" + pad) if pad else text
-        return with_children(f"{pad}{body}", indent, "\n\n")
-    if btype == "bulleted_list_item":
-        return with_children(f"{pad}- {text}")
-    if btype == "numbered_list_item":
-        return with_children(f"{pad}{number}. {text}")
-    if btype == "to_do":
-        mark = "x" if payload.get("checked") else " "
-        return with_children(f"{pad}- [{mark}] {text}")
-    if btype == "quote":
-        quoted = "\n".join(f"{pad}> {line}" for line in text.split("\n"))
-        return with_children(quoted, indent, "\n\n")
-    if btype == "callout":
-        icon = payload.get("icon") or {}
-        emoji = icon.get("emoji") or "💡"
-        return with_children(f"{pad}> {emoji} {text}", indent, "\n\n")
-    if btype == "toggle":
-        return with_children(f"{pad}- ▸ {text}")
-    if btype == "code":
-        lang = payload.get("language") or ""
-        raw = plain_text(payload.get("rich_text"))
-        body = "\n".join(pad + line for line in raw.split("\n"))
-        return f"{pad}```{lang}\n{body}\n{pad}```"
-    if btype == "divider":
-        return f"{pad}---"
-    if btype == "child_page":
-        return f"{pad}📄 {payload.get('title', '')} (child page {block.get('id', '')})"
-    if btype == "child_database":
-        return f"{pad}🗃 {payload.get('title', '')} (child database {block.get('id', '')})"
-    if btype in ("image", "file", "pdf", "video", "audio"):
-        url = _file_url(payload)
-        caption = rich_text_to_markdown(payload.get("caption")) or btype
-        return f"{pad}[{caption}]({url})"
-    if btype in ("bookmark", "embed", "link_preview"):
-        url = payload.get("url", "")
-        caption = rich_text_to_markdown(payload.get("caption")) or url
-        return f"{pad}[{caption}]({url})"
-    if btype == "equation":
-        return f"{pad}$$ {payload.get('expression', '')} $$"
-    if btype == "table":
-        rows = [_render_block(c, indent=indent, number=0) or "" for c in children]
-        return "\n".join(rows)
-    if btype == "table_row":
-        cells = [rich_text_to_markdown(cell) for cell in payload.get("cells", [])]
-        return f"{pad}| " + " | ".join(cells) + " |"
-    if btype == "column_list":
-        return blocks_to_markdown(children, indent=indent) if children else None
-    if btype == "column":
-        return blocks_to_markdown(children, indent=indent) if children else None
-    if btype == "synced_block":
-        return blocks_to_markdown(children, indent=indent) if children else None
-    if btype in ("table_of_contents", "breadcrumb"):
-        return None
-    if btype == "unsupported" or not btype:
-        return f"{pad}[unsupported block]"
-    label = text or btype
-    return with_children(f"{pad}[{btype}: {label}]")
+    def children_only(self) -> str | None:
+        return blocks_to_markdown(self.children, indent=self.indent) if self.children else None
 
 
 def _file_url(payload: dict[str, Any]) -> str:
@@ -326,6 +277,111 @@ def _file_url(payload: dict[str, Any]) -> str:
     if kind and isinstance(payload.get(kind), dict):
         return str(payload[kind].get("url", ""))
     return ""
+
+
+def _r_heading(c: _Ctx) -> str:
+    head = f"{c.pad}{'#' * _HEADING_TYPES[c.btype]} {c.text}"
+    return c.with_children(head, nested=False, sep="\n\n")
+
+
+def _r_paragraph(c: _Ctx) -> str:
+    body = c.text.replace("\n", "\n" + c.pad) if c.pad else c.text
+    return c.with_children(f"{c.pad}{body}", nested=False, sep="\n\n")
+
+
+def _r_quote(c: _Ctx) -> str:
+    quoted = "\n".join(f"{c.pad}> {line}" for line in c.text.split("\n"))
+    return c.with_children(quoted, nested=False, sep="\n\n")
+
+
+def _r_callout(c: _Ctx) -> str:
+    emoji = (c.payload.get("icon") or {}).get("emoji") or "💡"
+    return c.with_children(f"{c.pad}> {emoji} {c.text}", nested=False, sep="\n\n")
+
+
+def _r_code(c: _Ctx) -> str:
+    lang = c.payload.get("language") or ""
+    raw = plain_text(c.payload.get("rich_text"))
+    body = "\n".join(c.pad + line for line in raw.split("\n"))
+    return f"{c.pad}```{lang}\n{body}\n{c.pad}```"
+
+
+def _r_todo(c: _Ctx) -> str:
+    mark = "x" if c.payload.get("checked") else " "
+    return c.with_children(f"{c.pad}- [{mark}] {c.text}")
+
+
+def _r_child_page(c: _Ctx) -> str:
+    return f"{c.pad}📄 {c.payload.get('title', '')} (child page {c.block.get('id', '')})"
+
+
+def _r_child_database(c: _Ctx) -> str:
+    return f"{c.pad}🗃 {c.payload.get('title', '')} (child database {c.block.get('id', '')})"
+
+
+def _r_media(c: _Ctx) -> str:
+    caption = rich_text_to_markdown(c.payload.get("caption")) or c.btype
+    return f"{c.pad}[{caption}]({_file_url(c.payload)})"
+
+
+def _r_link_block(c: _Ctx) -> str:
+    url = c.payload.get("url", "")
+    caption = rich_text_to_markdown(c.payload.get("caption")) or url
+    return f"{c.pad}[{caption}]({url})"
+
+
+def _r_table(c: _Ctx) -> str:
+    rows = [_render_block(child, indent=c.indent, number=0) or "" for child in c.children]
+    return "\n".join(rows)
+
+
+def _r_table_row(c: _Ctx) -> str:
+    cells = [rich_text_to_markdown(cell) for cell in c.payload.get("cells", [])]
+    return f"{c.pad}| " + " | ".join(cells) + " |"
+
+
+_RENDERERS: dict[str, Callable[[_Ctx], str | None]] = {
+    "heading_1": _r_heading,
+    "heading_2": _r_heading,
+    "heading_3": _r_heading,
+    "paragraph": _r_paragraph,
+    "bulleted_list_item": lambda c: c.with_children(f"{c.pad}- {c.text}"),
+    "numbered_list_item": lambda c: c.with_children(f"{c.pad}{c.number}. {c.text}"),
+    "to_do": _r_todo,
+    "quote": _r_quote,
+    "callout": _r_callout,
+    "toggle": lambda c: c.with_children(f"{c.pad}- ▸ {c.text}"),
+    "code": _r_code,
+    "divider": lambda c: f"{c.pad}---",
+    "child_page": _r_child_page,
+    "child_database": _r_child_database,
+    "image": _r_media,
+    "file": _r_media,
+    "pdf": _r_media,
+    "video": _r_media,
+    "audio": _r_media,
+    "bookmark": _r_link_block,
+    "embed": _r_link_block,
+    "link_preview": _r_link_block,
+    "equation": lambda c: f"{c.pad}$$ {c.payload.get('expression', '')} $$",
+    "table": _r_table,
+    "table_row": _r_table_row,
+    "column_list": _Ctx.children_only,
+    "column": _Ctx.children_only,
+    "synced_block": _Ctx.children_only,
+    "table_of_contents": lambda c: None,
+    "breadcrumb": lambda c: None,
+}
+
+
+def _render_block(block: dict[str, Any], *, indent: int, number: int) -> str | None:
+    c = _Ctx(block, indent, number)
+    renderer = _RENDERERS.get(c.btype)
+    if renderer is not None:
+        return renderer(c)
+    if c.btype == "unsupported" or not c.btype:
+        return f"{c.pad}[unsupported block]"
+    return c.with_children(f"{c.pad}[{c.btype}: {c.text or c.btype}]")
 
 
 # --------------------------------------------------------------------------
@@ -347,128 +403,167 @@ def _block(btype: str, spans: list[dict[str, Any]], **extra: Any) -> dict[str, A
     return {"object": "block", "type": btype, btype: payload}
 
 
-def markdown_to_blocks(text: str) -> list[dict[str, Any]]:
-    """Parse Markdown into Notion block payloads (see module docstring)."""
-    lines = text.replace("\r\n", "\n").split("\n")
-    blocks: list[dict[str, Any]] = []
-    # Stack of (indent, block) for nesting list items under their parent.
-    list_stack: list[tuple[int, dict[str, Any]]] = []
-    para: list[str] = []
-    quote: list[str] = []
-    i = 0
+class _Parser:
+    """Line-oriented Markdown → blocks state machine (see :func:`markdown_to_blocks`)."""
 
-    def flush_para() -> None:
-        if para:
-            blocks.append(_block("paragraph", markdown_to_rich_text("\n".join(para))))
-            para.clear()
+    def __init__(self, lines: list[str]) -> None:
+        self.lines = lines
+        self.i = 0
+        self.blocks: list[dict[str, Any]] = []
+        # Stack of (indent, block) for nesting list items under their parent.
+        self.list_stack: list[tuple[int, dict[str, Any]]] = []
+        self.para: list[str] = []
+        self.quote: list[str] = []
 
-    def flush_quote() -> None:
-        if quote:
-            blocks.append(_block("quote", markdown_to_rich_text("\n".join(quote))))
-            quote.clear()
+    # -- buffers ----------------------------------------------------------
 
-    def flush_all() -> None:
-        flush_para()
-        flush_quote()
+    def flush_para(self) -> None:
+        if self.para:
+            self.blocks.append(_block("paragraph", markdown_to_rich_text("\n".join(self.para))))
+            self.para.clear()
 
-    def place_list_item(indent: int, item: dict[str, Any]) -> None:
-        while list_stack and list_stack[-1][0] >= indent:
-            list_stack.pop()
-        if list_stack:
-            parent = list_stack[-1][1]
+    def flush_quote(self) -> None:
+        if self.quote:
+            self.blocks.append(_block("quote", markdown_to_rich_text("\n".join(self.quote))))
+            self.quote.clear()
+
+    def flush_all(self) -> None:
+        self.flush_para()
+        self.flush_quote()
+
+    def break_lists(self) -> None:
+        self.flush_all()
+        self.list_stack.clear()
+
+    def place_list_item(self, indent: int, item: dict[str, Any]) -> None:
+        self.flush_all()
+        while self.list_stack and self.list_stack[-1][0] >= indent:
+            self.list_stack.pop()
+        if self.list_stack:
+            parent = self.list_stack[-1][1]
             parent[parent["type"]].setdefault("children", []).append(item)
         else:
-            blocks.append(item)
-        list_stack.append((indent, item))
+            self.blocks.append(item)
+        self.list_stack.append((indent, item))
 
-    while i < len(lines):
-        line = lines[i]
-        stripped = line.strip()
+    # -- line handlers: each returns True when it consumed the line -------
 
+    def fence(self, line: str, stripped: str) -> bool:
         fence = _FENCE_RE.match(stripped)
-        if fence:
-            flush_all()
-            list_stack.clear()
-            lang = fence.group(1) or "plain text"
-            body: list[str] = []
-            i += 1
-            while i < len(lines) and not _FENCE_RE.match(lines[i].strip()):
-                body.append(lines[i])
-                i += 1
-            i += 1  # closing fence
-            blocks.append(_block("code", rich_text("\n".join(body)), language=lang))
-            continue
+        if not fence:
+            return False
+        self.break_lists()
+        lang = fence.group(1) or "plain text"
+        body: list[str] = []
+        self.i += 1
+        while self.i < len(self.lines) and not _FENCE_RE.match(self.lines[self.i].strip()):
+            body.append(self.lines[self.i])
+            self.i += 1
+        self.i += 1  # closing fence
+        self.blocks.append(_block("code", rich_text("\n".join(body)), language=lang))
+        return True
 
-        if not stripped:
-            flush_all()
-            i += 1
-            continue
+    def blank(self, line: str, stripped: str) -> bool:
+        if stripped:
+            return False
+        self.flush_all()
+        self.i += 1
+        return True
 
-        if _DIVIDER_RE.match(stripped):
-            flush_all()
-            list_stack.clear()
-            blocks.append({"object": "block", "type": "divider", "divider": {}})
-            i += 1
-            continue
+    def divider(self, line: str, stripped: str) -> bool:
+        if not _DIVIDER_RE.match(stripped):
+            return False
+        self.break_lists()
+        self.blocks.append({"object": "block", "type": "divider", "divider": {}})
+        self.i += 1
+        return True
 
+    def heading(self, line: str, stripped: str) -> bool:
         heading = _HEADING_RE.match(stripped)
-        if heading:
-            flush_all()
-            list_stack.clear()
-            level = min(len(heading.group(1)), 3)
-            blocks.append(_block(f"heading_{level}", markdown_to_rich_text(heading.group(2) or "")))
-            i += 1
-            continue
+        if not heading:
+            return False
+        self.break_lists()
+        level = min(len(heading.group(1)), 3)
+        spans = markdown_to_rich_text(heading.group(2) or "")
+        self.blocks.append(_block(f"heading_{level}", spans))
+        self.i += 1
+        return True
 
+    def quote_line(self, line: str, stripped: str) -> bool:
         quoted = _QUOTE_RE.match(stripped)
-        if quoted:
-            flush_para()
-            list_stack.clear()
-            quote.append(quoted.group(1))
-            i += 1
-            continue
+        if not quoted:
+            return False
+        self.flush_para()
+        self.list_stack.clear()
+        self.quote.append(quoted.group(1))
+        self.i += 1
+        return True
 
+    def todo(self, line: str, stripped: str) -> bool:
         todo = _TODO_RE.match(line)
-        if todo:
-            flush_all()
-            indent = len(todo.group(1).expandtabs(2))
-            item = _block(
-                "to_do",
-                markdown_to_rich_text(todo.group(3) or ""),
-                checked=todo.group(2).lower() == "x",
-            )
-            place_list_item(indent, item)
-            i += 1
-            continue
+        if not todo:
+            return False
+        item = _block(
+            "to_do",
+            markdown_to_rich_text(todo.group(3) or ""),
+            checked=todo.group(2).lower() == "x",
+        )
+        self.place_list_item(len(todo.group(1).expandtabs(2)), item)
+        self.i += 1
+        return True
 
+    def bullet(self, line: str, stripped: str) -> bool:
         bullet = _BULLET_RE.match(line)
-        if bullet:
-            flush_all()
-            indent = len(bullet.group(1).expandtabs(2))
-            place_list_item(
-                indent, _block("bulleted_list_item", markdown_to_rich_text(bullet.group(2) or ""))
-            )
-            i += 1
-            continue
+        if not bullet:
+            return False
+        item = _block("bulleted_list_item", markdown_to_rich_text(bullet.group(2) or ""))
+        self.place_list_item(len(bullet.group(1).expandtabs(2)), item)
+        self.i += 1
+        return True
 
+    def numbered(self, line: str, stripped: str) -> bool:
         numbered = _NUMBER_RE.match(line)
-        if numbered:
-            flush_all()
-            indent = len(numbered.group(1).expandtabs(2))
-            place_list_item(
-                indent, _block("numbered_list_item", markdown_to_rich_text(numbered.group(2) or ""))
-            )
-            i += 1
-            continue
+        if not numbered:
+            return False
+        item = _block("numbered_list_item", markdown_to_rich_text(numbered.group(2) or ""))
+        self.place_list_item(len(numbered.group(1).expandtabs(2)), item)
+        self.i += 1
+        return True
 
-        # Plain text: continues a paragraph (or a list item's paragraph run).
-        flush_quote()
-        list_stack.clear()
-        para.append(stripped)
-        i += 1
+    def text(self, line: str, stripped: str) -> bool:
+        # Plain text: continues a paragraph.
+        self.flush_quote()
+        self.list_stack.clear()
+        self.para.append(stripped)
+        self.i += 1
+        return True
 
-    flush_all()
-    return blocks
+    def run(self) -> list[dict[str, Any]]:
+        # Order matters: to-dos before bullets (a to-do is a bullet with a box).
+        handlers = (
+            self.fence,
+            self.blank,
+            self.divider,
+            self.heading,
+            self.quote_line,
+            self.todo,
+            self.bullet,
+            self.numbered,
+            self.text,
+        )
+        while self.i < len(self.lines):
+            line = self.lines[self.i]
+            stripped = line.strip()
+            for handler in handlers:
+                if handler(line, stripped):
+                    break
+        self.flush_all()
+        return self.blocks
+
+
+def markdown_to_blocks(text: str) -> list[dict[str, Any]]:
+    """Parse Markdown into Notion block payloads (see module docstring)."""
+    return _Parser(text.replace("\r\n", "\n").split("\n")).run()
 
 
 def chunk_blocks(

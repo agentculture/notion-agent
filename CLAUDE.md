@@ -141,6 +141,11 @@ integration, token source and API version; with no token it exits `2`.
   (never `archived`); append positioning is `position.after_block` (never
   `after`); search filters are `page` / `data_source`.
 
+**Every code file stays under 1000 lines** — source, tests, workflows, configs,
+and the vendored skill scripts alike. `tests/test_file_lengths.py` walks
+`git ls-files` and fails the suite for any code file over the limit; a vendored
+script that outgrows it is a finding to raise upstream, not to trim here.
+
 Descriptive verbs must never hard-fail on a bad path — `overview` takes an
 optional `target` positional that it accepts and ignores, so `overview
 /no/such/path` still exits `0`. There is a test for it.

@@ -265,6 +265,25 @@ SCHEMA_TYPES = frozenset(
 )
 
 
+def _schema_entry(name: str, ptype: str, extra: str) -> dict[str, Any]:
+    """The schema payload for one ``Name=type[:extra]`` spec."""
+    if ptype not in SCHEMA_TYPES:
+        raise ValueError(
+            f"{name}: unsupported property type '{ptype}'; known: {', '.join(sorted(SCHEMA_TYPES))}"
+        )
+    if ptype in ("select", "multi_select"):
+        return {ptype: {"options": [{"name": o} for o in _split_list(extra)]}}
+    if ptype == "relation":
+        if not extra:
+            raise ValueError(
+                f"{name}: relation needs a target, e.g. {name}=relation:<data-source-id>"
+            )
+        return {"relation": {"data_source_id": extra.strip(), "single_property": {}}}
+    if ptype == "number":
+        return {"number": {"format": extra.strip() or "number"}}
+    return {ptype: {}}
+
+
 def build_schema(specs: list[str]) -> dict[str, Any]:
     """``["Name=title", "Kind=select:agent,human", "Rel=relation:<ds-id>"]`` → schema payload.
 
@@ -276,26 +295,9 @@ def build_schema(specs: list[str]) -> dict[str, Any]:
     for spec in specs:
         name, value = parse_assignment(spec)
         ptype, _, extra = value.partition(":")
-        ptype = ptype.strip().lower()
-        if ptype not in SCHEMA_TYPES:
-            raise ValueError(
-                f"{name}: unsupported property type '{ptype}'; "
-                f"known: {', '.join(sorted(SCHEMA_TYPES))}"
-            )
         if name in schema:
             raise ValueError(f"duplicate property '{name}'")
-        if ptype in ("select", "multi_select"):
-            schema[name] = {ptype: {"options": [{"name": o} for o in _split_list(extra)]}}
-        elif ptype == "relation":
-            if not extra:
-                raise ValueError(
-                    f"{name}: relation needs a target, e.g. {name}=relation:<data-source-id>"
-                )
-            schema[name] = {"relation": {"data_source_id": extra.strip(), "single_property": {}}}
-        elif ptype == "number":
-            schema[name] = {"number": {"format": extra.strip() or "number"}}
-        else:
-            schema[name] = {ptype: {}}
+        schema[name] = _schema_entry(name, ptype.strip().lower(), extra)
     titles = [n for n, v in schema.items() if "title" in v]
     if len(titles) > 1:
         raise ValueError(f"only one title property is allowed (got {', '.join(titles)})")

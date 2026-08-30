@@ -254,28 +254,33 @@ class NotionClient:
         cursor: str | None = None
         yielded = 0
         while True:
-            remaining = None if limit is None else limit - yielded
-            page_size = MAX_PAGE_SIZE if remaining is None else min(MAX_PAGE_SIZE, remaining)
-            if method.upper() == "GET":
-                q = dict(query or {})
-                q["page_size"] = page_size
-                if cursor:
-                    q["start_cursor"] = cursor
-                data = self.request(method, path, query=q)
-            else:
-                b = dict(body or {})
-                b["page_size"] = page_size
-                if cursor:
-                    b["start_cursor"] = cursor
-                data = self.request(method, path, body=b, query=query)
+            page_size = MAX_PAGE_SIZE if limit is None else min(MAX_PAGE_SIZE, limit - yielded)
+            data = self._list_page(method, path, body, query, cursor, page_size)
             for item in data.get("results", []):
                 yield item
                 yielded += 1
                 if limit is not None and yielded >= limit:
                     return
-            if not data.get("has_more") or not data.get("next_cursor"):
+            cursor = data.get("next_cursor") if data.get("has_more") else None
+            if not cursor:
                 return
-            cursor = data["next_cursor"]
+
+    def _list_page(
+        self,
+        method: str,
+        path: str,
+        body: dict[str, Any] | None,
+        query: dict[str, Any] | None,
+        cursor: str | None,
+        page_size: int,
+    ) -> dict[str, Any]:
+        """One page of a list endpoint; GET carries the cursor in the query, POST in the body."""
+        paging: dict[str, Any] = {"page_size": page_size}
+        if cursor:
+            paging["start_cursor"] = cursor
+        if method.upper() == "GET":
+            return self.request(method, path, query={**(query or {}), **paging})
+        return self.request(method, path, body={**(body or {}), **paging}, query=query)
 
     # -- convenience wrappers (one per endpoint family) -------------------
 
