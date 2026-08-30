@@ -80,7 +80,7 @@ No `devague deviate` records exist for this run; the decisions below are capture
 | 404s surface as "not shared with the integration NAME" with `request_id` | high | `tests/test_page_cli.py` 404 tests · live bogus-id output in PR #4 |
 | `5xx` is never retried for writes; `429` is retried with Retry-After | high | `tests/test_client.py::test_5xx_retried_only_for_get`, `::test_429_retried_with_retry_after_on_post` |
 | the token never reaches stdout/stderr | high | `tests/test_client.py::test_error_carries_notion_fields` + CLI token-leak tests |
-| `db create|get|query|row create|row update` work against the 2026-03-11 data-source model | high | `tests/test_db_block_comment_cli.py` · live `Agents db` (PR #4) |
+| `db create\|get\|query\|row create\|row update` work against the 2026-03-11 data-source model | high | `tests/test_db_block_comment_cli.py` · live `Agents db` (PR #4) |
 | the runtime has no third-party dependencies | high | `pyproject.toml` `dependencies = []` · `tests/test_client.py` |
 | no code file exceeds 1000 lines | high | `tests/test_file_lengths.py` (63 files checked) |
 | the branch received an independent second-mind review | low | colleague review partial only (`5ffc0595d92c`); Qodo and `/code-review` findings addressed — the colleague verdict beyond "writes gated, retries correct" is **unverified** |
