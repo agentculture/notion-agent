@@ -178,30 +178,38 @@ def _match_marker(text: str, i: int) -> tuple[str, str, int] | None:
     return None
 
 
+def _match_inline(
+    text: str, i: int, state: dict[str, Any]
+) -> tuple[list[dict[str, Any]], int] | None:
+    """A link or mark at ``i`` → (its spans, end index); ``None`` for plain text."""
+    link = _match_link(text, i)
+    if link:
+        label, url, end = link
+        return _parse_inline(label, {**state, "link": url}), end
+    mark = _match_marker(text, i)
+    if mark is None:
+        return None
+    marker, inner, end = mark
+    if marker == "`":
+        return rich_text(inner, **{**state, "code": True}), end
+    return _parse_inline(inner, {**state, **_MARKER_FLAGS[marker]}), end
+
+
 def _parse_inline(text: str, state: dict[str, Any]) -> list[dict[str, Any]]:
     spans: list[dict[str, Any]] = []
     buf = ""
     i = 0
     while i < len(text):
-        link = _match_link(text, i)
-        if link:
-            label, url, i = link
-            spans.extend(rich_text(buf, **state) if buf else [])
-            buf = ""
-            spans.extend(_parse_inline(label, {**state, "link": url}))
+        matched = _match_inline(text, i, state)
+        if matched is None:
+            buf += text[i]
+            i += 1
             continue
-        mark = _match_marker(text, i)
-        if mark:
-            marker, inner, i = mark
-            spans.extend(rich_text(buf, **state) if buf else [])
+        if buf:
+            spans.extend(rich_text(buf, **state))
             buf = ""
-            if marker == "`":
-                spans.extend(rich_text(inner, **{**state, "code": True}))
-            else:
-                spans.extend(_parse_inline(inner, {**state, **_MARKER_FLAGS[marker]}))
-            continue
-        buf += text[i]
-        i += 1
+        inner_spans, i = matched
+        spans.extend(inner_spans)
     if buf:
         spans.extend(rich_text(buf, **state))
     return spans
