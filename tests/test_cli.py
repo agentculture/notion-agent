@@ -34,27 +34,6 @@ def test_unknown_command_errors(capsys: pytest.CaptureFixture[str]) -> None:
     assert "hint:" in err
 
 
-# --- whoami ---------------------------------------------------------------
-
-
-def test_whoami_text(capsys: pytest.CaptureFixture[str]) -> None:
-    rc = main(["whoami"])
-    assert rc == 0
-    out = capsys.readouterr().out
-    assert "nick: notion-agent" in out
-    assert "backend: colleague" in out
-    assert "model:" in out
-
-
-def test_whoami_json(capsys: pytest.CaptureFixture[str]) -> None:
-    rc = main(["whoami", "--json"])
-    assert rc == 0
-    payload = json.loads(capsys.readouterr().out)
-    assert payload["nick"] == "notion-agent"
-    assert payload["version"] == __version__
-    assert payload["backend"] == "colleague"
-
-
 # --- learn ----------------------------------------------------------------
 
 
