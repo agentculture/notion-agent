@@ -357,7 +357,7 @@ def cmd_page_append(args: argparse.Namespace) -> None:
 # --------------------------------------------------------------------------
 
 
-def _trash(args: argparse.Namespace, *, in_trash: bool) -> int:
+def _trash(args: argparse.Namespace, *, in_trash: bool) -> None:
     page_id = parse_id(args.id, _ID_WHAT)
     verb = "archive" if in_trash else "restore"
     plan = Plan(summary=f"{verb} page {page_id}")

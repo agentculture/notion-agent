@@ -332,12 +332,12 @@ def _file_url(payload: dict[str, Any]) -> str:
 # markdown → blocks
 # --------------------------------------------------------------------------
 
-_HEADING_RE = re.compile(r"^(#{1,6})[ \t]+(.*)$")
-_BULLET_RE = re.compile(r"^([ \t]*)[-*+][ \t]+(.*)$")
-_TODO_RE = re.compile(r"^([ \t]*)[-*+][ \t]+\[([ xX])\][ \t]*(.*)$")
-_NUMBER_RE = re.compile(r"^([ \t]*)\d+[.)][ \t]+(.*)$")
+_HEADING_RE = re.compile(r"^(#{1,6})[ \t]+(\S.*)?$")
+_BULLET_RE = re.compile(r"^([ \t]*)[-*+][ \t]+(\S.*)?$")
+_TODO_RE = re.compile(r"^([ \t]*)[-*+][ \t]+\[([ xX])\](?:[ \t]+(\S.*)?)?$")
+_NUMBER_RE = re.compile(r"^([ \t]*)\d+[.)][ \t]+(\S.*)?$")
 _QUOTE_RE = re.compile(r"^>[ \t]?(.*)$")
-_FENCE_RE = re.compile(r"^```[ \t]*([^\s`]*)[ \t]*$")
+_FENCE_RE = re.compile(r"^```[ \t]*([^\s`]*)$")
 _DIVIDER_RE = re.compile(r"^(?:-{3,}|\*{3,}|_{3,})$")
 
 
@@ -416,7 +416,7 @@ def markdown_to_blocks(text: str) -> list[dict[str, Any]]:
             flush_all()
             list_stack.clear()
             level = min(len(heading.group(1)), 3)
-            blocks.append(_block(f"heading_{level}", markdown_to_rich_text(heading.group(2))))
+            blocks.append(_block(f"heading_{level}", markdown_to_rich_text(heading.group(2) or "")))
             i += 1
             continue
 
@@ -434,7 +434,7 @@ def markdown_to_blocks(text: str) -> list[dict[str, Any]]:
             indent = len(todo.group(1).expandtabs(2))
             item = _block(
                 "to_do",
-                markdown_to_rich_text(todo.group(3)),
+                markdown_to_rich_text(todo.group(3) or ""),
                 checked=todo.group(2).lower() == "x",
             )
             place_list_item(indent, item)
@@ -446,7 +446,7 @@ def markdown_to_blocks(text: str) -> list[dict[str, Any]]:
             flush_all()
             indent = len(bullet.group(1).expandtabs(2))
             place_list_item(
-                indent, _block("bulleted_list_item", markdown_to_rich_text(bullet.group(2)))
+                indent, _block("bulleted_list_item", markdown_to_rich_text(bullet.group(2) or ""))
             )
             i += 1
             continue
@@ -456,7 +456,7 @@ def markdown_to_blocks(text: str) -> list[dict[str, Any]]:
             flush_all()
             indent = len(numbered.group(1).expandtabs(2))
             place_list_item(
-                indent, _block("numbered_list_item", markdown_to_rich_text(numbered.group(2)))
+                indent, _block("numbered_list_item", markdown_to_rich_text(numbered.group(2) or ""))
             )
             i += 1
             continue
