@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/). This project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.1] - 2026-08-30
+
+### Added
+
+- `docs/deliveries/2026-08-30-notion-control-cli.md` — the delivery summary (planned vs. actual, drift, evidence, claims) for the surface-1 run, per the `summarize-delivery` skill.
+- In-repo eidetic memory records from the 0.9.0 session (Notion API 2026-03-11 shapes; colleague step-budget gotcha).
+
 ## [0.9.0] - 2026-08-30
 
 ### Added
