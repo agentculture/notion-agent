@@ -548,11 +548,11 @@ def test_page_append_after_threads_position_through_every_chunk(monkeypatch, cap
     assert patches[1].body["position"]["after_block"]["id"] == "new-100"
 
 
-def test_page_append_dry_run_shows_positioned_follow_up_chunks(fake, capsys) -> None:
+def test_page_append_dry_run_shows_positioned_follow_up_chunks(monkeypatch, capsys) -> None:
+    fake = FakeNotion().standard()
     body = "\n\n".join(f"p{i}" for i in range(101))
-    assert (
-        run(["page", "append", PAGE_ID, "--body", body, "--after", BLOCK_ID, "--json"], fake) == 0
-    )
+    argv = ["page", "append", PAGE_ID, "--body", body, "--after", BLOCK_ID, "--json"]
+    assert run(argv, fake, monkeypatch) == 0
     payload = json.loads(capsys.readouterr().out)
     assert payload["dry_run"] is True
     assert payload["requests"][0]["body"]["position"]["after_block"]["id"] == BLOCK_ID
