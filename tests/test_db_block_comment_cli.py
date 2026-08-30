@@ -522,3 +522,36 @@ def test_db_create_apply_posts_databases(monkeypatch, capsys) -> None:
 def test_db_create_rejects_bad_prop_spec(fake, capsys) -> None:
     assert run(["db", "create", "--parent", PAGE_ID, "--title", "x", "--prop", "F=formula"]) == 1
     assert "unsupported property type" in capsys.readouterr().err
+
+
+def test_block_append_after_threads_position_through_every_chunk(monkeypatch, capsys) -> None:
+    counter = {"n": 0}
+
+    def with_ids(req):
+        out = []
+        for child in req.body.get("children", []):
+            counter["n"] += 1
+            out.append({**child, "id": f"blk-{counter['n']}"})
+        return listing(out)
+
+    fake = with_client(
+        monkeypatch, FakeNotion().standard().on("PATCH", "/blocks/*/children", with_ids)
+    )
+    body = "\n\n".join(f"p{i}" for i in range(150))
+    assert run(["block", "append", BLOCK_ID, "--body", body, "--after", PAGE_ID, "--apply"]) == 0
+    patches = [c for c in fake.mutations() if c.path == f"/blocks/{BLOCK_ID}/children"]
+    assert [p.body["position"]["after_block"]["id"] for p in patches] == [PAGE_ID, "blk-100"]
+
+
+def test_comment_add_to_a_discussion_needs_no_page_id(fake, capsys) -> None:
+    assert run(["comment", "add", "--discussion", "d1", "--body", "hi", "--apply"]) == 0
+    (req,) = fake.mutations()
+    assert req.body["discussion_id"] == "d1"
+    assert "parent" not in req.body
+
+
+def test_comment_add_without_page_or_discussion_is_a_user_error(fake, capsys) -> None:
+    assert run(["comment", "add", "--body", "hi"]) == 1
+    err = capsys.readouterr().err
+    assert "page id is required" in err
+    assert "hint:" in err

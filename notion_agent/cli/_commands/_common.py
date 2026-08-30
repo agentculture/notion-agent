@@ -230,6 +230,47 @@ def run_plan(client: NotionClient, plan: Plan) -> list[dict[str, Any]]:
     return results
 
 
+def append_plan(
+    parent_id: str, chunks: list[list[dict[str, Any]]], after: str | None, plan: Plan
+) -> None:
+    """Add one ``PATCH /blocks/{parent}/children`` step per chunk to ``plan``.
+
+    With ``after``, every chunk is positioned: the first after ``after`` itself,
+    each later one after the last block the previous chunk created (its id is
+    only known once that chunk lands, so the plan shows a placeholder).
+    """
+    for index, chunk in enumerate(chunks):
+        body: dict[str, Any] = {"children": chunk}
+        describe = f"chunk {index + 1} of {len(chunks)}"
+        if after and index == 0:
+            body["position"] = {"type": "after_block", "after_block": {"id": after}}
+        elif after:
+            body["position"] = {
+                "type": "after_block",
+                "after_block": {"id": "<last block of previous chunk>"},
+            }
+            describe += " (positioned after the previous chunk's last block)"
+        plan.add("PATCH", f"/blocks/{parent_id}/children", body, describe=describe)
+
+
+def append_in_chunks(
+    client: NotionClient, parent_id: str, chunks: list[list[dict[str, Any]]], after: str | None
+) -> list[dict[str, Any]]:
+    """Execute a chunked append, threading the insertion point through every chunk."""
+    responses = []
+    anchor = after
+    for chunk in chunks:
+        body: dict[str, Any] = {"children": chunk}
+        if anchor:
+            body["position"] = {"type": "after_block", "after_block": {"id": anchor}}
+        response = client.request("PATCH", f"/blocks/{parent_id}/children", body=body)
+        responses.append(response)
+        results = response.get("results") or []
+        if anchor and results:
+            anchor = results[-1].get("id") or anchor
+    return responses
+
+
 # --------------------------------------------------------------------------
 # argparse helpers
 # --------------------------------------------------------------------------

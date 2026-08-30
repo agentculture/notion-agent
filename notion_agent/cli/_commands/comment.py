@@ -82,6 +82,15 @@ def cmd_add(args: argparse.Namespace) -> None:
     if args.discussion:
         body = {"discussion_id": args.discussion, **body}
         summary = f"add a comment to discussion {args.discussion}"
+    elif not args.id:
+        raise CliError(
+            code=EXIT_USER_ERROR,
+            message="a page id is required unless --discussion is given",
+            remediation=(
+                "notion-agent comment add <page-id> --body ... "
+                "or: comment add --discussion <id> --body ..."
+            ),
+        )
     else:
         page_id = parse_id(args.id, "page id")
         body = {"parent": {"page_id": page_id}, **body}
@@ -115,7 +124,9 @@ def register(sub: argparse._SubParsersAction) -> None:
     listing.set_defaults(func=cmd_list)
 
     add = noun.add_parser("add", help="Add a comment to a page or discussion.")
-    add.add_argument("id", help="Page id or Notion URL (ignored with --discussion).")
+    add.add_argument(
+        "id", nargs="?", help="Page id or Notion URL (omit when replying with --discussion)."
+    )
     add_body_flags(add, required=True)
     add.add_argument("--discussion", help="Reply into an existing discussion id.")
     add_apply_flag(add)

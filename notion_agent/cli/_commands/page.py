@@ -29,6 +29,8 @@ from notion_agent.cli._commands._common import (
     add_apply_flag,
     add_body_flags,
     add_json_flag,
+    append_in_chunks,
+    append_plan,
     applying,
     emit_plan,
     get_client,
@@ -333,16 +335,12 @@ def cmd_page_append(args: argparse.Namespace) -> None:
     after = parse_id(args.after, "block id") if args.after else None
     chunks = _chunks(blocks)
     plan = Plan(summary=f"append {len(blocks)} block(s) to {page_id}")
-    for index, chunk in enumerate(chunks):
-        body: dict[str, Any] = {"children": chunk}
-        if index == 0 and after:
-            body["position"] = {"type": "after_block", "after_block": {"id": after}}
-        plan.add("PATCH", f"/blocks/{page_id}/children", body)
+    append_plan(page_id, chunks, after, plan)
     if not applying(args):
         emit_plan(plan, json_mode=json_mode(args))
         return
     client = get_client(args)
-    run_plan(client, plan)
+    append_in_chunks(client, page_id, chunks, after)
     if json_mode(args):
         emit_result(
             {"id": page_id, "appended_blocks": len(blocks), "requests": len(chunks)},

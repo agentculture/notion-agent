@@ -23,6 +23,7 @@ from tests.fake_notion import (
     PAGE_ID,
     PARENT_PAGE_ID,
     FakeNotion,
+    listing,
 )
 
 TOKEN = "secret-xyz"
@@ -515,3 +516,45 @@ def test_page_get_no_content_skips_the_body(fake, monkeypatch, capsys) -> None:
     assert rc == 0
     assert payload["markdown"] == ""
     assert all(not c.path.endswith("/children") for c in fake.calls)
+
+
+def _ids_for_children(prefix: str):
+    """A PATCH children handler that hands every created block an id."""
+    counter = {"n": 0}
+
+    def handler(req):
+        out = []
+        for child in req.body.get("children", []):
+            counter["n"] += 1
+            out.append({**child, "id": f"{prefix}-{counter['n']}"})
+        return listing(out)
+
+    return handler
+
+
+def test_page_append_after_threads_position_through_every_chunk(monkeypatch, capsys) -> None:
+    fake = FakeNotion().standard().on("PATCH", "/blocks/*/children", _ids_for_children("new"))
+    body = "\n\n".join(f"p{i}" for i in range(150))
+    rc = run(
+        ["page", "append", PAGE_ID, "--body", body, "--after", BLOCK_ID, "--apply", "--json"],
+        fake,
+        monkeypatch,
+    )
+    assert rc == 0
+    patches = [c for c in fake.mutations() if c.path == f"/blocks/{PAGE_ID}/children"]
+    assert len(patches) == 2
+    assert patches[0].body["position"]["after_block"]["id"] == BLOCK_ID
+    # The second chunk lands right after the last block the first chunk created.
+    assert patches[1].body["position"]["after_block"]["id"] == "new-100"
+
+
+def test_page_append_dry_run_shows_positioned_follow_up_chunks(fake, capsys) -> None:
+    body = "\n\n".join(f"p{i}" for i in range(101))
+    assert (
+        run(["page", "append", PAGE_ID, "--body", body, "--after", BLOCK_ID, "--json"], fake) == 0
+    )
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["dry_run"] is True
+    assert payload["requests"][0]["body"]["position"]["after_block"]["id"] == BLOCK_ID
+    assert "previous chunk" in payload["requests"][1]["describe"]
+    assert fake.mutations() == []
